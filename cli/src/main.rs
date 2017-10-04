@@ -53,7 +53,9 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         .map_err(|e| e.to_string())?;
 
     // A cached state of blockchain.
-    let blockchain = Arc::new(blockchain::Blockchain::default());
+    let blockchain = Arc::new(blockchain::Blockchain::new("http://127.0.0.1:8545")
+        .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
+    );
     let database = Arc::new(database::Database::open("/tmp"));
 
     // Updater is responsible for notifying about latest block.

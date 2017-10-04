@@ -39,6 +39,7 @@ pub fn start(
                     let hash = transaction.hash();
                     if let Err(e) = database.insert(block_number, transaction) {
                         // TODO [ToDr] Proper error.
+                        // TODO [ToDr] can fail also if sender is already in DB.
                         error!("DB write error: {:?}", e);
                         return Err(core::Error::internal_error())
                     }

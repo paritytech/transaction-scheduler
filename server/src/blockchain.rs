@@ -1,29 +1,69 @@
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::{thread, time};
+use std::{fmt, thread, time};
 
-use futures::{sink, Sink, Future};
+use futures::{sink, future, Sink, Future};
 use futures::sync::mpsc;
 use parking_lot::RwLock;
 use web3::{self, Web3, Transport, transports};
 
-use types::BlockNumber;
+use types::{Address, BlockNumber, U256};
 use TransportType;
 
+type BN = (U256, U256);
 /// A structure responsible for maintaining and caching latest blockchain state, like:
 /// - latest block number
 /// - nonce for particular sender
-#[derive(Debug, Default)]
 pub struct Blockchain {
+    web3: Web3<transports::http::Http>,
+    _eloop: transports::EventLoopHandle,
     latest_block: RwLock<BlockNumber>,
+    cached_balance_and_nonce: Arc<RwLock<HashMap<Address, BN>>>,
+}
+
+impl fmt::Debug for Blockchain {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("Blockchain")
+            .field("latest_block", &self.latest_block)
+            .field("cached", &self.cached_balance_and_nonce)
+            .finish()
+    }
 }
 
 impl Blockchain {
+    pub fn new(url: &str) -> Result<Self, web3::Error> {
+        let (_eloop, http) = transports::http::Http::new(url)?;
+        Ok(Blockchain {
+            web3: Web3::new(http),
+            _eloop,
+            latest_block: Default::default(),
+            cached_balance_and_nonce: Default::default(),
+        })
+    }
+
     pub fn latest_block(&self) -> BlockNumber {
         *self.latest_block.read()
     }
 
     fn update_latest_block(&self, new: BlockNumber) {
         *self.latest_block.write() = new;
+        self.cached_balance_and_nonce.write().clear();
+    }
+
+    pub fn balance_and_nonce(&self, sender: Address) -> Box<Future<Item=BN, Error=web3::Error> + Send> {
+        if let Some(bn) = self.cached_balance_and_nonce.read().get(&sender) {
+            return Box::new(future::ok(bn.clone()));
+        }
+
+        let address = (*sender).into();
+        let balance = self.web3.eth().balance(address, None).map(|balance| (*balance).into());
+        let nonce = self.web3.eth().transaction_count(address, None).map(|nonce| (*nonce).into());
+
+        let cbn = self.cached_balance_and_nonce.clone();
+        Box::new(balance.join(nonce).map(move |res| {
+            cbn.write().insert(sender, res.clone());
+            res
+        }))
     }
 }
 
@@ -34,12 +74,12 @@ pub struct Updater {
 
 impl Updater {
     pub fn new(blockchain: Arc<Blockchain>) -> (Self, mpsc::Receiver<BlockNumber>) {
-        let (listener, rx) = mpsc::channel(1024);
+        let (listener, rx) = mpsc::channel(16);
         let listener = listener.wait();
         (Updater { blockchain, listener }, rx)
     }
 
-    pub fn run(mut self, transport: TransportType) -> Result<(), web3::Error> {
+    pub fn run(self, transport: TransportType) -> Result<(), web3::Error> {
         match transport {
             TransportType::Ipc(path) => {
                 let (_eloop, ipc) = transports::ipc::Ipc::new(&path)?;

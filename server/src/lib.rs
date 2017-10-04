@@ -5,12 +5,13 @@ extern crate futures;
 #[macro_use]
 extern crate log;
 
+extern crate ethcore;
 extern crate ethcore_bigint;
 extern crate futures_cpupool;
 extern crate jsonrpc_core;
 extern crate jsonrpc_http_server;
 extern crate parking_lot;
-// extern crate parity_rpc;
+extern crate rlp;
 extern crate rustc_hex;
 extern crate serde;
 extern crate serde_json;
@@ -21,6 +22,7 @@ pub mod database;
 pub mod server;
 pub mod submitter;
 
+mod errors;
 mod types;
 mod verifier;
 

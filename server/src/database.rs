@@ -9,6 +9,12 @@ error_chain! {
     foreign_links {
         Io(io::Error);
     }
+    errors {
+        SenderExists {
+            description("Sender already scheduled.")
+            display("Sender already scheduled.")
+        }
+    }
 }
 
 /// A storage for scheduled transactions.
@@ -17,8 +23,8 @@ error_chain! {
 /// The database should store only valid transactions.
 pub struct Database {
     path: PathBuf,
-    blocks: RwLock<BTreeMap<BlockNumber, BlockDatabase>>,
     senders: RwLock<HashSet<Address>>,
+    blocks: RwLock<BTreeMap<BlockNumber, BlockDatabase>>,
 }
 
 impl Database {
@@ -31,9 +37,19 @@ impl Database {
         }
     }
 
+    pub fn has_sender(&self, sender: &Address) -> bool {
+        self.senders.read().contains(sender)
+    }
+
     pub fn insert(&self, block_number: BlockNumber, transaction: Transaction) -> Result<()> {
-        let path = self.path.clone();
+        if self.senders.read().contains(&transaction.sender()) {
+            return Err(ErrorKind::SenderExists.into());
+        }
+
+        let mut senders = self.senders.write();
+        senders.insert(transaction.sender());
         let mut blocks = self.blocks.write();
+        let path = self.path.clone();
         let mut db = blocks.entry(block_number).or_insert_with(|| BlockDatabase::new(&path, block_number));
         db.insert(transaction)
     }
@@ -43,6 +59,8 @@ impl Database {
     }
 
     pub fn drain(&self, block_number: &BlockNumber) -> Option<BlockDatabase> {
+        // TODO [ToDr] Drain all blocks below current.
+        // TODO [ToDr] Clear senders
         self.blocks.write().remove(block_number)
     }
 }
@@ -62,7 +80,7 @@ impl BlockDatabase {
         }
     }
 
-    pub fn insert(&mut self, transaction: Transaction) -> Result<()> {
+    pub fn insert(&mut self, _transaction: Transaction) -> Result<()> {
         unimplemented!()
     }
 }
