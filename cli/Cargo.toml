@@ -1,0 +1,16 @@
+[package]
+name = "transaction-scheduler-cli"
+version = "0.1.0"
+authors = ["Tomasz Drwięga <tomusdrw@gmail.com>"]
+
+[[bin]]
+name = "txsched"
+path = "src/main.rs"
+
+[dependencies]
+docopt = "0.8"
+env_logger = "0.4"
+log = "0.3"
+serde = "1.0"
+serde_derive = "1.0"
+transaction-scheduler = { path = "../server" }
