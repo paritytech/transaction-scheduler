@@ -1,21 +1,34 @@
 #[macro_use]
+extern crate error_chain;
+#[macro_use]
+extern crate futures;
+#[macro_use]
 extern crate log;
 
+extern crate ethcore_bigint;
+extern crate futures_cpupool;
 extern crate jsonrpc_core;
 extern crate jsonrpc_http_server;
+extern crate parking_lot;
+// extern crate parity_rpc;
+extern crate rustc_hex;
+extern crate serde;
+extern crate serde_json;
+extern crate web3;
 
-use std::net;
+pub mod blockchain;
+pub mod database;
+pub mod server;
+pub mod submitter;
 
-use jsonrpc_core::{Value, IoHandler};
-use jsonrpc_http_server::{Server, Error, ServerBuilder};
+mod types;
+mod verifier;
 
-pub fn start_server(address: &net::SocketAddr, threads: usize) -> Result<Server, Error> {
-    let mut io = IoHandler::default();
-    io.add_method("say_hello", |_| {
-        Ok(Value::String("hello".into()))
-    });
-
-    ServerBuilder::new(io)
-        .threads(threads)
-        .start_http(address)
+/// Type of the transport to instantiate.
+#[derive(Debug, Clone)]
+pub enum TransportType {
+    /// IPC (local) transport
+    Ipc(String),
+    /// HTTP transport (can be remote)
+    Http(String),
 }
