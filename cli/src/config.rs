@@ -11,6 +11,7 @@ pub struct Rpc {
     pub port: u16,
     pub server_threads: usize,
     pub processing_threads: usize,
+    pub db_path: String,
 }
 
 #[derive(Debug, Deserialize)]

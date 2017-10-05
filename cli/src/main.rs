@@ -76,7 +76,7 @@ fn execute<S, I>(command: I) -> Result<String, String> where
     let blockchain = Arc::new(blockchain::Blockchain::new(&blockchain_node_address)
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
     );
-    let database = database::Database::open("/tmp")
+    let database = database::Database::open(&config.rpc.db_path)
         .map_err(|e| format!("Error opening database: {:?}", e))?;
     let database = Arc::new(database);
 

@@ -3,6 +3,7 @@ interface = "127.0.0.1"
 port = 3001
 server_threads = 8
 processing_threads = 16
+db_path = "./db"
 
 [verification]
 chain_id = 42
