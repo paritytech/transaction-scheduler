@@ -100,6 +100,7 @@ pub struct TransactionsIterator {
     db: BlockDatabase,
 }
 
+// TODO [ToDr] Should remove file when drained.
 impl Iterator for TransactionsIterator {
     type Item = Transaction;
 

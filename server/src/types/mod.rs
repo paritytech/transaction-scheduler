@@ -1,4 +1,5 @@
 use ethcore::transaction::SignedTransaction;
+use rlp;
 
 mod bytes;
 
@@ -30,7 +31,7 @@ impl Transaction {
         self.transaction.hash()
     }
 
-    pub fn into_rlp(self) -> Vec<u8> {
-        unimplemented!()
+    pub fn rlp(&self) -> Vec<u8> {
+        rlp::encode(&self.transaction).to_vec()
     }
 }

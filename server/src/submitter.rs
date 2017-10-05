@@ -73,7 +73,7 @@ impl<T: Transport + Send + 'static> Sink<T> {
         eloop.remote().spawn(move |_| receiver.for_each(move |transaction| {
             debug!("Got new transaction: {:?}", transaction);
             let hash = transaction.hash();
-            web3.eth().send_raw_transaction(transaction.into_rlp().into())
+            web3.eth().send_raw_transaction(transaction.rlp().into())
                 .map(|hash| {
                     debug!("[{:?}] Submitted transaction.", hash);
                 })
