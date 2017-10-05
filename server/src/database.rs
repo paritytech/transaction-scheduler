@@ -26,6 +26,7 @@ error_chain! {
 /// Each block has a separate instance of `BlockDatabase`.
 ///
 /// The database should store only valid transactions.
+#[derive(Debug)]
 pub struct Database {
     path: PathBuf,
     senders: Arc<RwLock<HashSet<Address>>>,
@@ -48,6 +49,7 @@ impl Database {
 
     pub fn insert(&self, block_number: BlockNumber, transaction: Transaction) -> Result<()> {
         if self.senders.read().contains(&transaction.sender()) {
+            trace!("[{:?}] Rejecting because sender is already in db.", transaction.hash());
             return Err(ErrorKind::SenderExists.into());
         }
 
@@ -79,6 +81,7 @@ impl Database {
 }
 
 /// A set of transactions to execute at particular block.
+#[derive(Debug)]
 struct BlockDatabase {
     path: PathBuf,
     file: fs::File,
@@ -101,6 +104,7 @@ impl BlockDatabase {
     }
 
     pub fn insert(&mut self, transaction: Transaction) -> Result<()> {
+        trace!("[{:?}] Inserting to db.", transaction.hash());
         let rlp_len = transaction.rlp().len();
         let mut vec = Vec::with_capacity(4 + 20 + 32 + rlp_len);
         vec.write_u32::<LittleEndian>(rlp_len as u32)?;
@@ -119,6 +123,7 @@ impl BlockDatabase {
         let mut content = Vec::new();
         self.file.read_to_end(&mut content)?;
 
+        trace!("Drained transactions from: {} (length: {})", path.display(), content.len());
         let content = io::Cursor::new(content);
         Ok(TransactionsIterator {
             path,

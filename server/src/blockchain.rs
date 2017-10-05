@@ -51,7 +51,9 @@ impl Blockchain {
     }
 
     pub fn balance_and_nonce(&self, sender: Address) -> Box<Future<Item=BN, Error=web3::Error> + Send> {
+        trace!("Fetching balance and nonce for {:?}", sender);
         if let Some(bn) = self.cached_balance_and_nonce.read().get(&sender) {
+            trace!("Returning cached result for {:?} = {:?}", sender, bn);
             return Box::new(future::ok(bn.clone()));
         }
 
@@ -61,6 +63,7 @@ impl Blockchain {
 
         let cbn = self.cached_balance_and_nonce.clone();
         Box::new(balance.join(nonce).map(move |res| {
+            trace!("Got balance and nonce for {:?} = {:?}", sender, res);
             cbn.write().insert(sender, res.clone());
             res
         }))
@@ -94,10 +97,12 @@ impl Updater {
     }
 
     fn run_internal<T: Transport>(mut self, transport: T) {
+        info!("Starting blockchain updater.");
         let web3 = Web3::new(transport);
         
         let mut last_block = None;
         let mut update = |block_number, last_block: &mut Option<BlockNumber>| {
+            trace!("Updating latest block number: {}", block_number);
             self.blockchain.update_latest_block(block_number);
             *last_block = Some(block_number);
             if let Err(err) = self.listener.send(block_number) {

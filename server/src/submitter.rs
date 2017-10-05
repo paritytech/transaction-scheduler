@@ -40,6 +40,7 @@ pub fn run<I: Iterator<Item=TransportType>>(
     listener
         .filter(move |block| db.has(block))
         .for_each(move |block| {
+            debug!("Sending transactions for block: {}", block);
             match database.drain(&block) {
                 Ok(Some(iterator)) => Either::A(Submitter::new(sinks.clone(), iterator)),
                 Ok(None) => {
@@ -77,7 +78,7 @@ impl<T: Transport + Send + 'static> Sink<T> {
 
         info!("Waiting for transactions to submit...");
         eloop.remote().spawn(move |_| receiver.for_each(move |transaction| {
-            debug!("Got new transaction: {:?}", transaction);
+            debug!("[{:?}] Sending transaction from: {:?}", transaction.hash(), transaction.sender());
             let hash = *transaction.hash();
             web3.eth().send_raw_transaction(transaction.rlp().into())
                 .map(|hash| {
@@ -106,6 +107,7 @@ impl<I: Iterator<Item=Transaction>> Submitter<I> {
         mut iterator: I,
     ) -> Self {
         if let Some(next) = iterator.next() {
+            debug!("[{:?}] Sending to {} endpoints.", next.hash(), sinks.len());
             Submitter {
                 state: Some(Box::new(
                     future::join_all(sinks.into_iter().map(move |sink| sink.send(next.clone())))
@@ -134,9 +136,12 @@ impl<I: Iterator<Item=Transaction>> Future for Submitter<I> {
                         warn!("Send error: {:?}", err);
                     }));
 
-                    self.iterator.next().map(move |next| Box::new(
-                        future::join_all(sinks.into_iter().map(move |sink| sink.send(next.clone())))
-                    ) as Box<Sending>)
+                    self.iterator.next().map(move |next| {
+                        debug!("[{:?}] Sending to {} endpoints.", next.hash(), sinks.len());
+                        Box::new(
+                            future::join_all(sinks.into_iter().map(move |sink| sink.send(next.clone())))
+                        ) as Box<Sending>
+                    })
                 }
             };
 

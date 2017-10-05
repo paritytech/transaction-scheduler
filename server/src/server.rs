@@ -20,7 +20,7 @@ pub fn start(
     processing_threads: usize,
 ) -> Result<Server, Error> {
     let pool = CpuPool::new(processing_threads);
-    let verifier = Arc::new(Verifier::new(blockchain));
+    let verifier = Arc::new(Verifier::new(blockchain, database.clone()));
 
     let mut io = IoHandler::default();
     io.add_method("scheduleTransaction", move |params: Params| {
@@ -33,14 +33,14 @@ pub fn start(
         let verifier = verifier.clone();
         let database = database.clone();
         Either::B(pool.spawn_fn(move || {
-            trace!("Verifying request: {:?}", block_number);
+            debug!("Verifying request: {:?}", block_number);
             verifier.verify(block_number, transaction)
                 .and_then(move |(block_number, transaction)| {
                     let hash = *transaction.hash();
                     if let Err(e) = database.insert(block_number, transaction) {
                         // TODO [ToDr] Proper error.
                         // TODO [ToDr] can fail also if sender is already in DB.
-                        error!("DB write error: {:?}", e);
+                        warn!("DB write error: {:?}", e);
                         return Err(core::Error::internal_error())
                     }
                     info!("[{:?}] Scheduled for {}", hash, block_number);
