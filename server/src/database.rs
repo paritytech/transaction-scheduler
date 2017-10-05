@@ -37,6 +37,7 @@ impl Database {
     const EXT: &'static str = "txs";
 
     pub fn open<T: AsRef<Path>>(path: T) -> Result<Self> {
+        fs::create_dir_all(&path)?;
         let mut blocks = BTreeMap::new();
         let mut senders = HashSet::new();
 
