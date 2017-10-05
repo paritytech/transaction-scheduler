@@ -11,7 +11,7 @@ use std::{env, thread};
 use std::sync::Arc;
 
 use docopt::Docopt;
-use transaction_scheduler::{blockchain, database, server, submitter, TransportType};
+use transaction_scheduler::{blockchain, database, server, submitter, TransportType, Options};
 
 const USAGE: &str = r#"
 Signed Transaction Scheduler
@@ -52,6 +52,17 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         .and_then(|d| d.argv(command).deserialize())
         .map_err(|e| e.to_string())?;
 
+    let options = Options {
+        chain_id: 42,
+        max_gas: 1_000_000,
+        min_gas_price: 4_000_000_000,
+        min_schedule_block: 5,
+        max_schedule_block: 100_000,
+        rpc_listen_address: format!("127.0.0.1:{}", args.flag_port).parse().unwrap(),
+        rpc_server_threads: args.flag_server_threads,
+        processing_threads: args.flag_threads,
+    };
+
     // A cached state of blockchain.
     let blockchain = Arc::new(blockchain::Blockchain::new("http://127.0.0.1:8545")
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
@@ -68,9 +79,7 @@ fn execute<S, I>(command: I) -> Result<String, String> where
     let server = server::start(
         database.clone(),
         blockchain.clone(),
-        &format!("127.0.0.1:{}", args.flag_port).parse().unwrap(),
-        args.flag_server_threads,
-        args.flag_threads,
+        options,
     )
     .map_err(|e| e.to_string())?;
 

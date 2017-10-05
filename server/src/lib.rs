@@ -27,8 +27,11 @@ pub mod server;
 pub mod submitter;
 
 mod errors;
+mod options;
 mod types;
 mod verifier;
+
+pub use options::Options;
 
 /// Type of the transport to instantiate.
 #[derive(Debug, Clone)]

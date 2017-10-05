@@ -1,26 +1,25 @@
-use std::net;
 use std::sync::Arc;
 
 use futures::Future;
 use futures::future::{self, Either};
 use futures_cpupool::CpuPool;
-use jsonrpc_core::{self as core, Value, IoHandler, Params};
+use jsonrpc_core::{Value, IoHandler, Params};
 use jsonrpc_http_server::{Server, Error, ServerBuilder};
 
 use blockchain::Blockchain;
-use database::Database;
-use verifier::Verifier;
+use database::{self, Database};
+use errors;
+use options::Options;
 use types::{BlockNumber, Bytes};
+use verifier::Verifier;
 
 pub fn start(
     database: Arc<Database>,
     blockchain: Arc<Blockchain>,
-    address: &net::SocketAddr,
-    server_threads: usize,
-    processing_threads: usize,
+    options: Options,
 ) -> Result<Server, Error> {
-    let pool = CpuPool::new(processing_threads);
-    let verifier = Arc::new(Verifier::new(blockchain, database.clone()));
+    let pool = CpuPool::new(options.processing_threads);
+    let verifier = Arc::new(Verifier::new(blockchain, database.clone(), options.clone()));
 
     let mut io = IoHandler::default();
     io.add_method("scheduleTransaction", move |params: Params| {
@@ -38,10 +37,12 @@ pub fn start(
                 .and_then(move |(block_number, transaction)| {
                     let hash = *transaction.hash();
                     if let Err(e) = database.insert(block_number, transaction) {
-                        // TODO [ToDr] Proper error.
-                        // TODO [ToDr] can fail also if sender is already in DB.
-                        warn!("DB write error: {:?}", e);
-                        return Err(core::Error::internal_error())
+                        if let &database::ErrorKind::SenderExists = e.kind() {
+                            warn!("DB sender exists: {}", e);
+                        } else {
+                            warn!("DB write error: {:?}", e);
+                        }
+                        return Err(errors::internal(e))
                     }
                     info!("[{:?}] Scheduled for {}", hash, block_number);
                     // TODO [ToDr] After transactions are submitted make sure they are mined, if not - resubmit.
@@ -51,6 +52,6 @@ pub fn start(
     });
 
     ServerBuilder::new(io)
-        .threads(server_threads)
-        .start_http(address)
+        .threads(options.rpc_server_threads)
+        .start_http(&options.rpc_listen_address)
 }

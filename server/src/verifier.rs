@@ -8,6 +8,7 @@ use rlp::UntrustedRlp;
 use blockchain::Blockchain;
 use database::Database;
 use errors;
+use options::Options;
 use types::{BlockNumber, Bytes, Transaction};
 
 /// This struct is responsible for verifying incoming transactions.
@@ -23,34 +24,30 @@ use types::{BlockNumber, Bytes, Transaction};
 pub struct Verifier {
     blockchain: Arc<Blockchain>,
     database: Arc<Database>,
+    options: Options,
 }
 
 impl Verifier {
-    const CHAIN_ID: u64 = 42;
-    const MIN_GAS_PRICE: u64 = 4_000_000_000; // 4gwei
-    const MAX_FUTURE_BLOCK: u64 = 1_000_000;
-
-    pub fn new(blockchain: Arc<Blockchain>, database: Arc<Database>) -> Self {
-        Verifier { blockchain, database }
+    pub fn new(blockchain: Arc<Blockchain>, database: Arc<Database>, options: Options) -> Self {
+        Verifier { blockchain, database, options }
     }
 
     pub fn verify(&self, block_number: BlockNumber, transaction: Bytes)
         -> Box<Future<Item=(BlockNumber, Transaction), Error=Error> + Send>
     {
-        // TODO [ToDr] Some threshold?
         let latest_block = self.blockchain.latest_block();
-        if block_number <= latest_block {
-            debug!("Rejecting request. Block too low: {} <= {}", block_number, latest_block);
+        if block_number <= latest_block + self.options.min_schedule_block {
+            debug!("Rejecting request. Block is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block);
             return Box::new(future::err(errors::transaction("Invalid block number.")));
         }
 
-        if block_number > latest_block + Self::MAX_FUTURE_BLOCK {
-            debug!("Rejecting request. Block too high: {} > {}", block_number, latest_block + Self::MAX_FUTURE_BLOCK);
+        if block_number > latest_block + self.options.max_schedule_block {
+            debug!("Rejecting request. Block is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block);
             return Box::new(future::err(errors::transaction("Invalid block number.")));
         }
 
         // Verify some basics about the transaction.
-        let tx = match verify_transaction(transaction) {
+        let tx = match verify_transaction(transaction, &self.options) {
             Ok(tx) => tx,
             Err(err) => {
                 debug!("Rejecting request: {:?}", err);
@@ -89,10 +86,10 @@ impl Verifier {
     }
 }
 
-fn verify_transaction(transaction: Bytes) -> Result<SignedTransaction, Error> {
+fn verify_transaction(transaction: Bytes, options: &Options) -> Result<SignedTransaction, Error> {
     let rlp = UntrustedRlp::new(&transaction.into_vec()).as_val().map_err(errors::rlp)?;
     let tx = SignedTransaction::new(rlp).map_err(errors::transaction)?;
-    tx.verify_basic(true, Some(Verifier::CHAIN_ID), false).map_err(errors::transaction)?;
+    tx.verify_basic(true, Some(options.chain_id), false).map_err(errors::transaction)?;
     // Validate basic gas
     let minimal_gas = minimal_gas(&tx);
     if tx.gas < minimal_gas.into() {
@@ -100,10 +97,16 @@ fn verify_transaction(transaction: Bytes) -> Result<SignedTransaction, Error> {
         return Err(errors::transaction(format!("Gas is too low. Required: {}", minimal_gas)));
     }
 
+    // Validate maximal gas
+    if tx.gas > options.max_gas.into() {
+        debug!("[{:?}] Rejecting. Gas too high: {:?} > {}", tx.hash(), tx.gas, options.max_gas);
+        return Err(errors::transaction(format!("Gas is too high. Maximal: {}", options.max_gas)));
+    }
+
     // Validate gas price
-    if tx.gas_price < Verifier::MIN_GAS_PRICE.into() {
-        debug!("[{:?}] Rejecting. Gas price too low: {:?} < {}", tx.hash(), tx.gas_price, Verifier::MIN_GAS_PRICE);
-        return Err(errors::transaction(format!("Gas price is too low. Required: {} wei", Verifier::MIN_GAS_PRICE)));
+    if tx.gas_price < options.min_gas_price.into() {
+        debug!("[{:?}] Rejecting. Gas price too low: {:?} < {}", tx.hash(), tx.gas_price, options.min_gas_price);
+        return Err(errors::transaction(format!("Gas price is too low. Required: {} wei", options.min_gas_price)));
     }
 
     Ok(tx)
