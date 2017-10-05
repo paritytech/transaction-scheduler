@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Tomasz Drwięga <tomusdrw@gmail.com>"]
 
 [dependencies]
+byteorder = "1.1"
 error-chain = "0.11"
 futures = "0.1.16"
 futures-cpupool = "0.1"
@@ -19,3 +20,6 @@ web3 = { git = "https://github.com/tomusdrw/rust-web3.git" }
 ethcore-bigint = { git = "https://github.com/paritytech/parity.git" }
 ethcore = { git = "https://github.com/paritytech/parity.git" }
 rlp = { git = "https://github.com/paritytech/parity.git" }
+
+[dev-dependencies]
+tempdir = "0.3"

@@ -40,11 +40,17 @@ pub fn run<I: Iterator<Item=TransportType>>(
     listener
         .filter(move |block| db.has(block))
         .for_each(move |block| {
-            if let Some(transactions) = database.drain(&block) {
-                return Either::A(Submitter::new(sinks.clone(), transactions.into_iter()));
+            match database.drain(&block) {
+                Ok(Some(iterator)) => Either::A(Submitter::new(sinks.clone(), iterator)),
+                Ok(None) => {
+                    warn!("No transactions found in block: {}", block);
+                    Either::B(future::ok(()))
+                }
+                Err(err) => {
+                    error!("Unable to read transactions for block {}: {:?}", block, err);
+                    Either::B(future::ok(()))
+                }
             }
-            warn!("No transactions found in block: {}", block);
-            return Either::B(future::ok(()));
         })
         .wait()
         .map_err(|_| unreachable!())
@@ -72,7 +78,7 @@ impl<T: Transport + Send + 'static> Sink<T> {
         info!("Waiting for transactions to submit...");
         eloop.remote().spawn(move |_| receiver.for_each(move |transaction| {
             debug!("Got new transaction: {:?}", transaction);
-            let hash = transaction.hash();
+            let hash = *transaction.hash();
             web3.eth().send_raw_transaction(transaction.rlp().into())
                 .map(|hash| {
                     debug!("[{:?}] Submitted transaction.", hash);

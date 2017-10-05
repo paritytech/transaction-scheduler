@@ -56,7 +56,8 @@ fn execute<S, I>(command: I) -> Result<String, String> where
     let blockchain = Arc::new(blockchain::Blockchain::new("http://127.0.0.1:8545")
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
     );
-    let database = Arc::new(database::Database::open("/tmp"));
+    let database = database::Database::open("/tmp").map_err(|e| format!("Error opening database: {:?}", e))?;
+    let database = Arc::new(database);
 
     // Updater is responsible for notifying about latest block.
     let (updater, listener) = blockchain::Updater::new(

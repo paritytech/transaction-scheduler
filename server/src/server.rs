@@ -36,7 +36,7 @@ pub fn start(
             trace!("Verifying request: {:?}", block_number);
             verifier.verify(block_number, transaction)
                 .and_then(move |(block_number, transaction)| {
-                    let hash = transaction.hash();
+                    let hash = *transaction.hash();
                     if let Err(e) = database.insert(block_number, transaction) {
                         // TODO [ToDr] Proper error.
                         // TODO [ToDr] can fail also if sender is already in DB.

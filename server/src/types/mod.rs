@@ -11,27 +11,38 @@ pub type Address = ::ethcore_bigint::hash::H160;
 pub type U256 = ::ethcore_bigint::prelude::U256;
 pub type H256 = ::ethcore_bigint::hash::H256;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Transaction {
-    transaction: SignedTransaction,
+    sender: Address,
+    hash: H256,
+    rlp: Vec<u8>,
 }
 
 impl From<SignedTransaction> for Transaction {
     fn from(transaction: SignedTransaction) -> Self {
-        Transaction { transaction }
+        let rlp = rlp::encode(&transaction).to_vec();
+        Transaction {
+            sender: transaction.sender(),
+            hash: transaction.hash(),
+            rlp,
+        }
     }
 }
 
 impl Transaction {
-    pub fn sender(&self) -> Address {
-        self.transaction.sender()
+    pub fn new(sender: Address, hash: H256, rlp: Vec<u8>) -> Self {
+        Transaction { sender, hash, rlp }
     }
 
-    pub fn hash(&self) -> H256 {
-        self.transaction.hash()
+    pub fn sender(&self) -> &Address {
+        &self.sender
     }
 
-    pub fn rlp(&self) -> Vec<u8> {
-        rlp::encode(&self.transaction).to_vec()
+    pub fn hash(&self) -> &H256 {
+        &self.hash
+    }
+
+    pub fn rlp(&self) -> &[u8] {
+        &self.rlp
     }
 }

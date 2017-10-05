@@ -5,6 +5,7 @@ extern crate futures;
 #[macro_use]
 extern crate log;
 
+extern crate byteorder;
 extern crate ethcore;
 extern crate ethcore_bigint;
 extern crate futures_cpupool;
@@ -16,6 +17,9 @@ extern crate rustc_hex;
 extern crate serde;
 extern crate serde_json;
 extern crate web3;
+
+#[cfg(test)]
+extern crate tempdir;
 
 pub mod blockchain;
 pub mod database;
