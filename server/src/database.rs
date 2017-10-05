@@ -3,7 +3,7 @@ use std::collections::{HashSet, BTreeMap};
 use std::io::{Read, Write, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{io, fs};
+use std::{io, fs, mem};
 
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use parking_lot::RwLock;
@@ -34,12 +34,39 @@ pub struct Database {
 }
 
 impl Database {
+    const EXT: &'static str = "txs";
+
     pub fn open<T: AsRef<Path>>(path: T) -> Result<Self> {
-        // TODO Re-open all existing block database that are found
+        let mut blocks = BTreeMap::new();
+        let mut senders = HashSet::new();
+
+        // Re-open all existing block database that are found
+        for entry in fs::read_dir(&path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                continue;
+            }
+            let extension = path.extension().and_then(|s| s.to_str());
+            if let Some(Self::EXT) = extension {
+                let file_stem = path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse().ok());
+                if let Some(number) = file_stem {
+                    match BlockDatabase::open(&path, &mut senders) {
+                        Ok(block) => {
+                            blocks.insert(number, block);
+                        },
+                        Err(err) => {
+                            warn!("Ignoring invalid db file at {}: {:?}", path.display(), err);
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(Database {
             path: path.as_ref().to_owned(),
-            blocks: Default::default(),
-            senders: Default::default(),
+            senders: Arc::new(RwLock::new(senders)),
+            blocks: RwLock::new(blocks),
         })
     }
 
@@ -59,8 +86,8 @@ impl Database {
 
         match blocks.entry(block_number) {
             Entry::Vacant(vacant) => {
-                let path = self.path.clone();
-                let db = BlockDatabase::new(&path, block_number)?;
+                let path = self.path.join(format!("{}.{}", block_number, Self::EXT));
+                let db = BlockDatabase::new(&path)?;
                 vacant.insert(db).insert(transaction)
             },
             Entry::Occupied(ref mut db) => db.get_mut().insert(transaction),
@@ -71,12 +98,27 @@ impl Database {
         self.blocks.read().contains_key(block_number)
     }
 
-    pub fn drain(&self, block_number: &BlockNumber) -> Result<Option<TransactionsIterator>> {
-        // TODO [ToDr] Drain all blocks below current.
-        match self.blocks.write().remove(block_number) {
-            Some(block) => Ok(Some(block.drain(self.senders.clone())?)),
-            None => Ok(None),
+    pub fn drain(&self, block_number: BlockNumber) -> Result<Option<TransactionsIterator>> {
+        let blocks = {
+            let mut blocks = self.blocks.write();
+            let mut new = blocks.split_off(&(block_number + 1));
+            mem::swap(&mut *blocks, &mut new);
+            new
+        };
+        let mut it = blocks.into_iter();
+        let mut tx_it = match it.next() {
+            None => return Ok(None),
+            Some((num, block)) => {
+                debug!("Draining transactions for block: {}", num);
+                block.drain(self.senders.clone())?
+            }
+        };
+        for (num, block) in it {
+            debug!("Draining transactions for block: {}", num);
+            tx_it.append(block.drain(self.senders.clone())?);
         }
+
+        Ok(Some(tx_it))
     }
 }
 
@@ -88,17 +130,35 @@ struct BlockDatabase {
 }
 
 impl BlockDatabase {
-    pub fn new<T: AsRef<Path>>(path: T, block_number: BlockNumber) -> Result<Self> {
-        let path = path.as_ref();
-        let path = path.join(format!("{}.txs", block_number));
+    pub fn open<T: AsRef<Path>>(path: T, senders: &mut HashSet<Address>) -> Result<Self> {
+        let mut file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)?;
+
+        trace!("Reading transactions from: {}", path.as_ref().display());
+        let mut it = TransactionsIterator::from_file(&mut file, IteratorMode::ReadOnly)?;
+        while let Some(tx) = it.next() {
+            trace!("Populating sender: {}", tx.sender());
+            senders.insert(*tx.sender());
+        }
+        file.seek(io::SeekFrom::Start(0))?;
+
+        Ok(BlockDatabase {
+            path: path.as_ref().to_owned(),
+            file,
+        })
+    }
+
+    pub fn new<T: AsRef<Path>>(path: T) -> Result<Self> {
         let file = fs::OpenOptions::new()
             .read(true)
+            .write(true)
             .create(true)
-            .append(true)
             .open(&path)?;
 
         Ok(BlockDatabase {
-            path,
+            path: path.as_ref().to_owned(),
             file,
         })
     }
@@ -118,25 +178,42 @@ impl BlockDatabase {
     }
 
     fn drain(mut self, senders: Arc<RwLock<HashSet<Address>>>) -> Result<TransactionsIterator> {
-        let path = self.path;
         self.file.seek(io::SeekFrom::Start(0))?;
-        let mut content = Vec::new();
-        self.file.read_to_end(&mut content)?;
-
-        trace!("Drained transactions from: {} (length: {})", path.display(), content.len());
-        let content = io::Cursor::new(content);
-        Ok(TransactionsIterator {
-            path,
-            content,
-            senders,
-        })
+        trace!("Draining transactions from: {}", self.path.display());
+        TransactionsIterator::from_file(&mut self.file, IteratorMode::Drain(senders, vec![self.path]))
     }
 }
 
+pub enum IteratorMode {
+    Drain(Arc<RwLock<HashSet<Address>>>, Vec<PathBuf>),
+    ReadOnly,
+}
+
 pub struct TransactionsIterator {
-    path: PathBuf,
     content: io::Cursor<Vec<u8>>,
-    senders: Arc<RwLock<HashSet<Address>>>,
+    mode: IteratorMode,
+}
+
+impl TransactionsIterator {
+    pub fn from_file(file: &mut fs::File, mode: IteratorMode) -> Result<Self> {
+        let mut content = Vec::new();
+        file.read_to_end(&mut content)?;
+
+        let content = io::Cursor::new(content);
+        Ok(TransactionsIterator {
+            content,
+            mode,
+        })
+    }
+
+    pub fn append(&mut self, other: Self) {
+        if let IteratorMode::Drain(_, ref mut paths) = self.mode {
+            if let IteratorMode::Drain(_, other_paths) = other.mode {
+                paths.extend_from_slice(&other_paths);
+            }
+        }
+        self.content.get_mut().extend_from_slice(&other.content.into_inner())
+    }
 }
 
 impl Iterator for TransactionsIterator {
@@ -144,9 +221,12 @@ impl Iterator for TransactionsIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.content.position() == self.content.get_ref().len() as u64 {
-            // TODO [ToDr] Should remove file when drained.
-            if let Err(err) = fs::remove_file(&self.path) {
-                warn!("Unable to remove processed file at {}: {:?}", self.path.display(), err);
+            if let IteratorMode::Drain(_, ref paths) = self.mode {
+                for path in paths {
+                    if let Err(err) = fs::remove_file(path) {
+                        warn!("Unable to remove processed file at {}: {:?}", path.display(), err);
+                    }
+                }
             }
             return None;
         }
@@ -165,12 +245,14 @@ impl Iterator for TransactionsIterator {
 
         match read_transaction(&mut self.content) {
             Ok(transaction) => {
-                self.senders.write().remove(transaction.sender());
+                if let IteratorMode::Drain(ref senders, _) = self.mode {
+                    senders.write().remove(transaction.sender());
+                }
                 Some(transaction)
             },
             Err(err) => {
                 // TODO [ToDr] Can we recover from that?
-                format!("Error reading transaction from db: {:?}", err);
+                warn!("Error reading transaction from db: {:?}", err);
                 None
             }
         }
@@ -201,7 +283,7 @@ mod tests {
     #[test]
     fn should_save_transactions_to_disk() {
         let dir = TempDir::new("db1").unwrap();
-        let mut db = BlockDatabase::new(dir.path(), 5).unwrap();
+        let mut db = BlockDatabase::new(dir.path().join("test.txs")).unwrap();
         db.insert(tx(0)).unwrap();
         db.insert(tx(1)).unwrap();
         db.insert(tx(2)).unwrap();
@@ -210,6 +292,42 @@ mod tests {
         assert_eq!(iter.next(), Some(tx(0)));
         assert_eq!(iter.next(), Some(tx(1)));
         assert_eq!(iter.next(), Some(tx(2)));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn should_save_transaction() {
+        let dir = TempDir::new("db1").unwrap();
+        let db = Database::open(dir.path()).unwrap();
+        db.insert(5, tx(0)).unwrap();
+        db.insert(3, tx(1)).unwrap();
+        db.insert(3, tx(2)).unwrap();
+
+        // This should be an error, cause there is already a transaction from the same sender.
+        db.insert(6, tx(0)).unwrap_err();
+
+        let mut iter = db.drain(5).unwrap().unwrap();
+        assert_eq!(iter.next(), Some(tx(1)));
+        assert_eq!(iter.next(), Some(tx(2)));
+        assert_eq!(iter.next(), Some(tx(0)));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn should_restore_db_from_disk() {
+        let dir = TempDir::new("db1").unwrap();
+        {
+            let db = Database::open(dir.path()).unwrap();
+            db.insert(5, tx(0)).unwrap();
+            db.insert(3, tx(1)).unwrap();
+            db.insert(3, tx(2)).unwrap();
+        }
+
+        let db = Database::open(dir.path()).unwrap();
+        let mut iter = db.drain(5).unwrap().unwrap();
+        assert_eq!(iter.next(), Some(tx(1)));
+        assert_eq!(iter.next(), Some(tx(2)));
+        assert_eq!(iter.next(), Some(tx(0)));
         assert_eq!(iter.next(), None);
     }
 }

@@ -41,7 +41,7 @@ pub fn run<I: Iterator<Item=TransportType>>(
         .filter(move |block| db.has(block))
         .for_each(move |block| {
             debug!("Sending transactions for block: {}", block);
-            match database.drain(&block) {
+            match database.drain(block) {
                 Ok(Some(iterator)) => Either::A(Submitter::new(sinks.clone(), iterator)),
                 Ok(None) => {
                     warn!("No transactions found in block: {}", block);
