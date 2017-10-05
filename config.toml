@@ -1,0 +1,24 @@
+[rpc]
+interface = "127.0.0.1"
+port = 3001
+server_threads = 8
+processing_threads = 16
+
+[verification]
+chain_id = 42
+max_gas = 1_000_000
+min_gas_price = 20_000_000_000
+min_schedule_block = 5
+max_schedule_block = 100_000
+
+[nodes]
+# A node that will be queried for latest blockchain state (block number/nonce&balance)
+blockchain = "http://127.0.0.1:8545"
+
+# A list of nodes to which the transactions will be submitted to
+transactions = [
+  "http://127.0.0.1:8545"
+]
+
+
+

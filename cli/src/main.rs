@@ -5,9 +5,13 @@ extern crate serde_derive;
 
 extern crate docopt;
 extern crate env_logger;
+extern crate toml;
 extern crate transaction_scheduler;
 
-use std::{env, thread};
+mod config;
+
+use std::{env, thread, path, fs};
+use std::io::Read;
 use std::sync::Arc;
 
 use docopt::Docopt;
@@ -18,21 +22,17 @@ Signed Transaction Scheduler
     Copyright 2017 Parity Technologies (UK) Limited
 
 Usage:
-    txsched [options]
+    txsched [--config FILE]
     txsched -h | --help
 
 Options:
+    --config FILE            Specify config file to use [default: config.toml].
     -h, --help               Display help message and exit.   
-    --port=<port>            Listen on specified port [default: 3001].
-    --threads=<num>          Number of processing threads to spawn [default: 16].
-    --server-threads=<num>   Number of server threads to spawn [default: 8].
 "#;
 
 #[derive(Debug, Deserialize)]
 pub struct Args {
-    flag_port: u16,
-    flag_threads: usize,
-    flag_server_threads: usize,
+    flag_config: path::PathBuf,
 }
 
 fn main() {
@@ -52,22 +52,32 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         .and_then(|d| d.argv(command).deserialize())
         .map_err(|e| e.to_string())?;
 
+    let mut file = fs::File::open(&args.flag_config)
+        .map_err(|e| format!("Unable to open config file at {}: {}", args.flag_config.display(), e))?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)
+        .map_err(|e| format!("Error reading config: {}", e))?;
+    let config: config::Config = toml::from_str(&content)
+        .map_err(|e| format!("Invalid config: {}", e))?;
+
     let options = Options {
-        chain_id: 42,
-        max_gas: 1_000_000,
-        min_gas_price: 4_000_000_000,
-        min_schedule_block: 5,
-        max_schedule_block: 100_000,
-        rpc_listen_address: format!("127.0.0.1:{}", args.flag_port).parse().unwrap(),
-        rpc_server_threads: args.flag_server_threads,
-        processing_threads: args.flag_threads,
+        chain_id: config.verification.chain_id,
+        max_gas: config.verification.max_gas,
+        min_gas_price: config.verification.min_gas_price,
+        min_schedule_block: config.verification.min_schedule_block,
+        max_schedule_block: config.verification.max_schedule_block,
+        rpc_listen_address: format!("{}:{}", config.rpc.interface, config.rpc.port).parse().map_err(|e| format!("Invalid interface or port: {}", e))?,
+        rpc_server_threads: config.rpc.server_threads,
+        processing_threads: config.rpc.processing_threads,
     };
 
+    let blockchain_node_address = config.nodes.blockchain.clone();
     // A cached state of blockchain.
-    let blockchain = Arc::new(blockchain::Blockchain::new("http://127.0.0.1:8545")
+    let blockchain = Arc::new(blockchain::Blockchain::new(&blockchain_node_address)
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
     );
-    let database = database::Database::open("/tmp").map_err(|e| format!("Error opening database: {:?}", e))?;
+    let database = database::Database::open("/tmp")
+        .map_err(|e| format!("Error opening database: {:?}", e))?;
     let database = Arc::new(database);
 
     // Updater is responsible for notifying about latest block.
@@ -86,14 +96,14 @@ fn execute<S, I>(command: I) -> Result<String, String> where
     // spawn submitters
     let handle = thread::spawn(move || {
         submitter::run(
-            vec![TransportType::Http("http://localhost:8545".into())].into_iter(),
+            config.nodes.transactions.into_iter().map(TransportType::Http),
             listener,
             database,
         ).map_err(|e| error!("Error starting submitters: {:?}", e))
     });
 
     // Blockchain updater uses the main thread.
-    updater.run(TransportType::Http("http://localhost:8545".into()))
+    updater.run(TransportType::Http(blockchain_node_address))
         .map_err(|e| format!("Error Starting blockchain updater: {:?}", e))?;
 
     // wait for server to finish
