@@ -10,8 +10,8 @@ matrix:
   fast_finish: false
   include:
   - rust: stable
-  - rust: beta
-  - rust: nightly
+  # - rust: beta
+  # - rust: nightly
 
 addons:
   apt:
