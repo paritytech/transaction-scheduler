@@ -13,6 +13,13 @@ matrix:
   - rust: beta
   - rust: nightly
 
+addons:
+  apt:
+    packages:
+      - libudev-dev
+      - libssl-dev
+      - pkg-config
+
 script:
   - cargo build --all
   - cargo test --all
