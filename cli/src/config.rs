@@ -30,3 +30,14 @@ pub struct Nodes {
     pub blockchain: String,
     pub transactions: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+    use toml;
+
+    #[test]
+    fn should_parse_default_config() {
+        let _config: Config = toml::from_str(include_str!("../../config.toml")).unwrap();
+    }
+}
