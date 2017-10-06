@@ -1,3 +1,10 @@
+//! Ethereum Transaction Scheduler
+//! 
+//! Exposes a JSON-RPC `scheduleTransaction(block, rlp)` method
+//! that schedules a transaction for submission in some future block.
+
+#![warn(missing_docs)]
+
 #[macro_use]
 extern crate error_chain;
 #[macro_use]

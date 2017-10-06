@@ -95,10 +95,17 @@ fn execute<S, I>(command: I) -> Result<String, String> where
     };
 
     let blockchain_node_address = config.nodes.blockchain.clone();
+    // A certifier contract query interface.
+    let certifier = match config.verification.certifier.as_ref().map(|x| x.parse()) {
+        None => None,
+        Some(Ok(address)) => Some(address),
+        Some(Err(err)) => return Err(format!("Unable to parse certifier address: {}", err)),
+    };
     // A cached state of blockchain.
-    let blockchain = Arc::new(blockchain::Blockchain::new(&blockchain_node_address)
+    let blockchain = Arc::new(blockchain::Blockchain::new(&blockchain_node_address, certifier)
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
     );
+
     let database = database::Database::open(&config.rpc.db_path)
         .map_err(|e| format!("Error opening database: {:?}", e))?;
     let database = Arc::new(database);
