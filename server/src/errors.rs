@@ -14,6 +14,13 @@ pub fn transaction<T: ::std::fmt::Display>(error: T) -> Error {
 		data: Some(Value::String(format!("{}", error))),
 	}
 }
+pub fn block<T: ::std::fmt::Display>(error: T) -> Error {
+	Error {
+		code: ErrorCode::InvalidParams,
+		message: "Invalid block number.".into(),
+		data: Some(Value::String(format!("{}", error))),
+	}
+}
 pub fn internal<T: ::std::fmt::Display>(error: T) -> Error {
 	Error {
 		code: ErrorCode::InternalError,

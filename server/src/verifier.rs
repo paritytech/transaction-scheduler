@@ -38,12 +38,16 @@ impl Verifier {
         let latest_block = self.blockchain.latest_block();
         if block_number <= latest_block + self.options.min_schedule_block {
             debug!("Rejecting request. Block is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block);
-            return Box::new(future::err(errors::transaction("Invalid block number.")));
+            return Box::new(future::err(errors::block(format!(
+                "Block number is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block
+            ))));
         }
 
         if block_number > latest_block + self.options.max_schedule_block {
             debug!("Rejecting request. Block is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block);
-            return Box::new(future::err(errors::transaction("Invalid block number.")));
+            return Box::new(future::err(errors::block(format!(
+                "Block number is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block
+            ))));
         }
 
         // Verify some basics about the transaction.
