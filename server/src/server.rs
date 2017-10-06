@@ -1,3 +1,5 @@
+//! JSON-RPC server
+
 use std::sync::Arc;
 
 use futures::Future;
@@ -13,6 +15,7 @@ use options::Options;
 use types::{BlockNumber, Bytes};
 use verifier::Verifier;
 
+/// Starts the JSON-RPC server.
 pub fn start(
     database: Arc<Database>,
     blockchain: Arc<Blockchain>,

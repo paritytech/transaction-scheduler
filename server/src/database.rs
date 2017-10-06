@@ -1,3 +1,5 @@
+//! Transactions storage
+
 use std::collections::btree_map::Entry;
 use std::collections::{HashSet, BTreeMap};
 use std::io::{Read, Write, Seek};
@@ -10,17 +12,23 @@ use parking_lot::RwLock;
 
 use types::{BlockNumber, Transaction, Address};
 
-error_chain! {
-    foreign_links {
-        Io(io::Error);
-    }
-    errors {
-        SenderExists {
-            description("Sender already scheduled.")
-            display("Sender already scheduled.")
+mod error {
+    #![allow(unknown_lints)]
+    #![allow(missing_docs)]
+    error_chain! {
+        foreign_links {
+            Io(::std::io::Error);
+        }
+        errors {
+            SenderExists {
+                description("Sender already scheduled.")
+                display("Sender already scheduled.")
+            }
         }
     }
 }
+
+pub use self::error::*;
 
 /// A storage for scheduled transactions.
 /// Each block has a separate instance of `BlockDatabase`.
@@ -36,6 +44,7 @@ pub struct Database {
 impl Database {
     const EXT: &'static str = "txs";
 
+    /// Open and load existing database in given directory.
     pub fn open<T: AsRef<Path>>(path: T) -> Result<Self> {
         fs::create_dir_all(&path)?;
         let mut blocks = BTreeMap::new();
@@ -71,10 +80,12 @@ impl Database {
         })
     }
 
+    /// Returns true if the sender has already scheduled a transaction.
     pub fn has_sender(&self, sender: &Address) -> bool {
         self.senders.read().contains(sender)
     }
 
+    /// Inserts new transactions to the store.
     pub fn insert(&self, block_number: BlockNumber, transaction: Transaction) -> Result<()> {
         if self.senders.read().contains(&transaction.sender()) {
             trace!("[{:?}] Rejecting because sender is already in db.", transaction.hash());
@@ -95,10 +106,12 @@ impl Database {
         }
     }
 
+    /// Returns true if there are any transactions scheduled for given block.
     pub fn has(&self, block_number: &BlockNumber) -> bool {
         self.blocks.read().contains_key(block_number)
     }
 
+    /// Drains transactions scheduled for submission up to given block number.
     pub fn drain(&self, block_number: BlockNumber) -> Result<Option<TransactionsIterator>> {
         let blocks = {
             let mut blocks = self.blocks.write();
@@ -131,6 +144,7 @@ struct BlockDatabase {
 }
 
 impl BlockDatabase {
+    /// Open existing transactions store and load senders to given `HashSet`.
     pub fn open<T: AsRef<Path>>(path: T, senders: &mut HashSet<Address>) -> Result<Self> {
         let mut file = fs::OpenOptions::new()
             .read(true)
@@ -151,6 +165,7 @@ impl BlockDatabase {
         })
     }
 
+    /// Creates new transactions store.
     pub fn new<T: AsRef<Path>>(path: T) -> Result<Self> {
         let file = fs::OpenOptions::new()
             .read(true)
@@ -164,6 +179,7 @@ impl BlockDatabase {
         })
     }
 
+    /// Inserts new transaction to the store.
     pub fn insert(&mut self, transaction: Transaction) -> Result<()> {
         trace!("[{:?}] Inserting to db.", transaction.hash());
         let rlp_len = transaction.rlp().len();
@@ -185,17 +201,22 @@ impl BlockDatabase {
     }
 }
 
+/// Iteration mode
 pub enum IteratorMode {
+    /// Remove the files after iterator is drained and remove senders from the set.
     Drain(Arc<RwLock<HashSet<Address>>>, Vec<PathBuf>),
+    /// Only read transactions.
     ReadOnly,
 }
 
+/// Transactions iterator
 pub struct TransactionsIterator {
     content: io::Cursor<Vec<u8>>,
     mode: IteratorMode,
 }
 
 impl TransactionsIterator {
+    /// Iterate over transactions from given file.
     pub fn from_file(file: &mut fs::File, mode: IteratorMode) -> Result<Self> {
         let mut content = Vec::new();
         file.read_to_end(&mut content)?;
@@ -207,6 +228,8 @@ impl TransactionsIterator {
         })
     }
 
+    /// Join two iterators together.
+    /// Both files will be removed if both iterators are in `Drain` mode.
     pub fn append(&mut self, other: Self) {
         if let IteratorMode::Drain(_, ref mut paths) = self.mode {
             if let IteratorMode::Drain(_, other_paths) = other.mode {

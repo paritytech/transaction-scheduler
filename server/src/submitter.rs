@@ -1,3 +1,5 @@
+//! Submits transactions to "edge nodes" when a block is mined.
+
 use std::sync::Arc;
 
 use futures::future::{self, Either};

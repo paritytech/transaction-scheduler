@@ -28,10 +28,15 @@ pub struct Verifier {
 }
 
 impl Verifier {
-    pub fn new(blockchain: Arc<Blockchain>, database: Arc<Database>, options: Options) -> Self {
+    pub fn new(
+        blockchain: Arc<Blockchain>,
+        database: Arc<Database>,
+        options: Options,
+    ) -> Self {
         Verifier { blockchain, database, options }
     }
 
+    /// Verify and parse given block number and RLP.
     pub fn verify(&self, block_number: BlockNumber, transaction: Bytes)
         -> Box<Future<Item=(BlockNumber, Transaction), Error=Error> + Send>
     {
@@ -59,34 +64,46 @@ impl Verifier {
             },
         };
 
+        let (hash, sender) = (tx.hash(), tx.sender());
         // Verify transaction sender
-        if self.database.has_sender(&tx.sender()) {
-            debug!("[{:?}] Rejecting. Sender already present: {}", tx.hash(), tx.sender());
+        if self.database.has_sender(&sender) {
+            debug!("[{:?}] Rejecting. Sender already present: {}", hash, sender);
             return Box::new(future::err(errors::transaction("Sender already scheduled.")));
         }
 
-        // TODO [ToDr] Validate certification status.
-
         // Validate balance and nonce
-        Box::new(self.blockchain.balance_and_nonce(tx.sender())
+        let blockchain = self.blockchain.clone();
+        Box::new(self.blockchain.is_certified(sender)
             .map_err(errors::transaction)
-            .and_then(move |(balance, nonce)| {
-                let required = tx.value.saturating_add(tx.gas.saturating_mul(tx.gas_price));
-                if  balance < required {
-                    debug!("[{:?}] Rejecting. Insufficient balance: {:?} < {:?}", tx.hash(), balance, required);
-                    return Err(errors::transaction(
-                        format!("Insufficient balance (required: {}, got: {})", required, balance)
-                    ));
-                }
-                if tx.nonce != nonce {
-                    debug!("[{:?}] Rejecting. Invalid nonce: {:?} != {:?}", tx.hash(), tx.nonce, nonce);
-                    return Err(errors::transaction(
-                        format!("Invalid nonce (required: {}, got: {})", nonce, tx.nonce)
-                    ));
+            .and_then(move |is_certified| {
+                if !is_certified {
+                    debug!("[{:?}] Rejecting. Sender not certified: {:?}", hash, sender);
+                    return future::Either::A(future::err(errors::transaction(
+                        format!("Sender is not certified.")
+                    )));
                 }
 
-                Ok((block_number, tx.into()))
-            }))
+                future::Either::B(blockchain.balance_and_nonce(sender)
+                    .map_err(errors::transaction)
+                    .and_then(move |(balance, nonce)| {
+                        let required = tx.value.saturating_add(tx.gas.saturating_mul(tx.gas_price));
+                        if  balance < required {
+                            debug!("[{:?}] Rejecting. Insufficient balance: {:?} < {:?}", hash, balance, required);
+                            return Err(errors::transaction(
+                                format!("Insufficient balance (required: {}, got: {})", required, balance)
+                            ));
+                        }
+                        if tx.nonce != nonce {
+                            debug!("[{:?}] Rejecting. Invalid nonce: {:?} != {:?}", hash, tx.nonce, nonce);
+                            return Err(errors::transaction(
+                                format!("Invalid nonce (required: {}, got: {})", nonce, tx.nonce)
+                            ));
+                        }
+
+                        Ok((block_number, tx.into()))
+                    }))
+            })
+        )
     }
 }
 

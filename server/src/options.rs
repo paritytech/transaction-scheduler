@@ -1,3 +1,4 @@
+/// Transaction Scheduler Server options.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// Chain id
