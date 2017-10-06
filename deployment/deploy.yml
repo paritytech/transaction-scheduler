@@ -1,0 +1,62 @@
+---
+- name: Install Transaction Scheduler
+  hosts: txsched
+  become: true
+
+  tasks:
+    - name: Install Rust
+      command: bash -c "curl https://static.rust-lang.org/rustup.sh | sh"
+      args:
+        creates: /usr/local/bin/cargo
+
+    - name: Create user to run app
+      user:
+        name: txsched
+
+    - name: Checkout Scheduler
+      git:
+        repo: https://github.com/tomusdrw/transaction-scheduler.git
+        dest: /home/txsched/transaction-scheduler
+
+    - name: libudev-dev | Install dependencies (because of ethcore crate)
+      apt:
+        name: libudev-dev
+        state: present
+
+    - name: pkg-config | Install dependencies (because of ethcore crate)
+      apt:
+        name: pkg-config
+        state: present
+
+    - name: libssl-dev | Install dependencies (because of ethcore crate)
+      apt:
+        name: libssl-dev
+        state: present
+
+    - name: Build Project
+      command: cargo build --release -p transaction-scheduler-cli
+      args:
+        chdir: /home/txsched/transaction-scheduler
+
+    - name: Create DB directory
+      file:
+        path: /home/txsched/transaction-scheduler/db
+        state: directory
+        mode: 0755
+        owner: txsched
+
+    - name: PM2 | Stop Previous
+      command: pm2 delete txsched
+      ignore_errors: True
+      args:
+        chdir: /home/txsched/transaction-scheduler
+      become: true
+      become_user: txsched
+
+    - name: PM2 | Run
+      command: pm2 start ./target/release/txsched --name "txsched"
+      args:
+        chdir: /home/txsched/transaction-scheduler
+      become: true
+      become_user: txsched
+

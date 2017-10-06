@@ -1,0 +1,17 @@
+server {
+  listen 127.0.0.1:4000;
+
+  location / {
+    proxy_pass https://mainnet.infura.io/;
+    proxy_set_header Host      $host;
+  }
+}
+
+server {
+  listen 127.0.0.1:4001;
+
+  location / {
+    proxy_pass https://kovan.infura.io/;
+    proxy_set_header Host      $host;
+  }
+}
