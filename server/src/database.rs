@@ -108,7 +108,10 @@ impl Database {
 
     /// Returns true if there are any transactions scheduled for given block.
     pub fn has(&self, block_number: &BlockNumber) -> bool {
-        self.blocks.read().contains_key(block_number)
+        match self.blocks.read().keys().next() {
+            Some(b) if b <= block_number => true,
+            _ => false,
+        }
     }
 
     /// Drains transactions scheduled for submission up to given block number.
@@ -329,6 +332,12 @@ mod tests {
 
         // This should be an error, cause there is already a transaction from the same sender.
         db.insert(6, tx(0)).unwrap_err();
+
+        assert_eq!(db.has(&2), false);
+        assert_eq!(db.has(&3), true);
+        assert_eq!(db.has(&4), true);
+        assert_eq!(db.has(&5), true);
+        assert_eq!(db.has(&6), true);
 
         let mut iter = db.drain(5).unwrap().unwrap();
         assert_eq!(iter.next(), Some(tx(1)));

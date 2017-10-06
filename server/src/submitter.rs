@@ -20,6 +20,7 @@ pub fn run<I: Iterator<Item=TransportType>>(
     mut types: I,
     listener: mpsc::Receiver<BlockNumber>,
     database: Arc<Database>,
+    submit_earlier: u64,
 ) -> Result<(), Error> {
     let mut sinks = Vec::new();
     let mut eloops = Vec::new();
@@ -40,6 +41,7 @@ pub fn run<I: Iterator<Item=TransportType>>(
 
     let db = database.clone();
     listener
+        .map(move |block| block + submit_earlier)
         .filter(move |block| db.has(block))
         .for_each(move |block| {
             debug!("Sending transactions for block: {}", block);

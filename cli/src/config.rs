@@ -12,6 +12,7 @@ pub struct Rpc {
     pub server_threads: usize,
     pub processing_threads: usize,
     pub db_path: String,
+    pub submit_earlier: u64,
 }
 
 #[derive(Debug, Deserialize)]

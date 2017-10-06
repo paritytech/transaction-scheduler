@@ -129,6 +129,7 @@ fn execute<S, I>(command: I) -> Result<String, String> where
             config.nodes.transactions.into_iter().map(TransportType::Http),
             listener,
             database,
+            config.rpc.submit_earlier,
         ).map_err(|e| error!("Error starting submitters: {:?}", e))
     });
 
