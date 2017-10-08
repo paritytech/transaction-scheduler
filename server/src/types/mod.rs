@@ -11,6 +11,15 @@ pub type Address = ::ethcore_bigint::hash::H160;
 pub type U256 = ::ethcore_bigint::prelude::U256;
 pub type H256 = ::ethcore_bigint::hash::H256;
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum Condition {
+	#[serde(rename="block")]
+	Number(BlockNumber),
+	#[serde(rename="time")]
+	Timestamp(u64),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Transaction {
     sender: Address,

@@ -9,7 +9,13 @@ use blockchain::Blockchain;
 use database::Database;
 use errors;
 use options::Options;
-use types::{BlockNumber, Bytes, Transaction};
+use types::{Bytes, Transaction};
+
+#[derive(Debug)]
+enum VerifierMode {
+    Block,
+    Timestamp,
+}
 
 /// This struct is responsible for verifying incoming transactions.
 ///
@@ -25,34 +31,38 @@ pub struct Verifier {
     blockchain: Arc<Blockchain>,
     database: Arc<Database>,
     options: Options,
+    mode: VerifierMode,
 }
 
 impl Verifier {
-    pub fn new(
+    /// Create new verifier for block-based scheduling.
+    pub fn new_block(
         blockchain: Arc<Blockchain>,
         database: Arc<Database>,
         options: Options,
     ) -> Self {
-        Verifier { blockchain, database, options }
+        Verifier { blockchain, database, options, mode: VerifierMode::Block, }
     }
 
-    /// Verify and parse given block number and RLP.
-    pub fn verify(&self, block_number: BlockNumber, transaction: Bytes)
-        -> Box<Future<Item=(BlockNumber, Transaction), Error=Error> + Send>
-    {
-        let latest_block = self.blockchain.latest_block();
-        if block_number <= latest_block + self.options.min_schedule_block {
-            debug!("Rejecting request. Block is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block);
-            return Box::new(future::err(errors::block(format!(
-                "Block number is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block
-            ))));
-        }
+    /// Create new verifier for timestamp-based scheduling.
+    pub fn new_timestamp(
+        blockchain: Arc<Blockchain>,
+        database: Arc<Database>,
+        options: Options,
+    ) -> Self {
+        Verifier { blockchain, database, options, mode: VerifierMode::Timestamp, }
+    }
 
-        if block_number > latest_block + self.options.max_schedule_block {
-            debug!("Rejecting request. Block is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block);
-            return Box::new(future::err(errors::block(format!(
-                "Block number is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block
-            ))));
+    /// Verify and parse given number (block or timestamp) and RLP.
+    pub fn verify(&self, num: u64, transaction: Bytes)
+        -> Box<Future<Item=(u64, Transaction), Error=Error> + Send>
+    {
+        let result = match self.mode {
+            VerifierMode::Block => self.verify_block_number(num),
+            VerifierMode::Timestamp => self.verify_timestamp(num),
+        };
+        if let Err(err) = result {
+            return Box::new(future::err(err));
         }
 
         // Verify some basics about the transaction.
@@ -100,10 +110,56 @@ impl Verifier {
                             ));
                         }
 
-                        Ok((block_number, tx.into()))
+                        Ok((num, tx.into()))
                     }))
             })
         )
+    }
+
+    fn verify_block_number(&self, block_number: u64) -> Result<(), Error> {
+        let latest_block = self.blockchain.latest_block();
+        if block_number <= latest_block + self.options.min_schedule_block {
+            debug!("Rejecting request. Block is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block);
+            return Err(errors::block(format!(
+                "Block number is too low: {} <= {}",
+                block_number,
+                latest_block + self.options.min_schedule_block,
+            )));
+        }
+
+        if block_number > latest_block + self.options.max_schedule_block {
+            debug!("Rejecting request. Block is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block);
+            return Err(errors::block(format!(
+                "Block number is too high: {} > {}",
+                block_number,
+                latest_block + self.options.max_schedule_block,
+            )));
+        }
+
+        Ok(())
+    }
+
+    fn verify_timestamp(&self, time: u64) -> Result<(), Error> {
+        let current_time_seconds = ::time::now_utc().to_timespec().sec as u64;
+        if time <= current_time_seconds + self.options.min_schedule_seconds {
+            debug!("Rejecting request. Timestamp is too low: {} <= {}", time, current_time_seconds + self.options.min_schedule_seconds);
+            return Err(errors::timestamp(format!(
+                "Timestamp is too low: {} <= {}",
+                time,
+                current_time_seconds + self.options.min_schedule_seconds,
+            )));
+        }
+
+        if time > current_time_seconds + self.options.max_schedule_seconds {
+            debug!("Rejecting request. Timestamp is too high: {} > {}", time, current_time_seconds + self.options.max_schedule_seconds);
+            return Err(errors::timestamp(format!(
+                "Timestamp is too high: {} > {}",
+                time,
+                current_time_seconds + self.options.max_schedule_seconds,
+            )));
+        }
+
+        Ok(())
     }
 }
 

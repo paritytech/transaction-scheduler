@@ -89,6 +89,8 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         min_gas_price: config.verification.min_gas_price,
         min_schedule_block: config.verification.min_schedule_block,
         max_schedule_block: config.verification.max_schedule_block,
+        min_schedule_seconds: config.verification.min_schedule_seconds,
+        max_schedule_seconds: config.verification.max_schedule_seconds,
         rpc_listen_address: format!("{}:{}", config.rpc.interface, config.rpc.port).parse().map_err(|e| format!("Invalid interface or port: {}", e))?,
         rpc_server_threads: config.rpc.server_threads,
         processing_threads: config.rpc.processing_threads,
@@ -106,9 +108,10 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
     );
 
-    let database = database::Database::open(&config.rpc.db_path)
-        .map_err(|e| format!("Error opening database: {:?}", e))?;
-    let database = Arc::new(database);
+    let block_database = Arc::new(database::Database::open(&config.rpc.db_path)
+        .map_err(|e| format!("Error opening database: {:?}", e))?);
+    let timestamp_database = Arc::new(database::Database::open(&format!("{}/time/", config.rpc.db_path))
+        .map_err(|e| format!("Error opening database: {:?}", e))?);
 
     // Updater is responsible for notifying about latest block.
     let (updater, listener) = blockchain::Updater::new(
@@ -117,21 +120,31 @@ fn execute<S, I>(command: I) -> Result<String, String> where
 
     // A JSON-RPC server verifying and accepting requests.
     let server = server::start(
-        database.clone(),
+        block_database.clone(),
+        timestamp_database.clone(),
         blockchain.clone(),
         options,
     )
     .map_err(|e| e.to_string())?;
 
     // spawn submitters
+    let transactions = config.nodes.transactions.clone();
+    let submit_earlier = config.rpc.submit_earlier;
     let handle = thread::spawn(move || {
-        submitter::run(
-            config.nodes.transactions.into_iter().map(TransportType::Http),
+        submitter::run_block(
+            transactions.into_iter().map(TransportType::Http),
             listener,
-            database,
-            config.rpc.submit_earlier,
+            block_database,
+            submit_earlier,
         ).map_err(|e| error!("Error starting submitters: {:?}", e))
     });
+    let _handle = thread::spawn(move || {
+        submitter::run_timestamp(
+            config.nodes.transactions.into_iter().map(TransportType::Http),
+            timestamp_database,
+        ).map_err(|e| error!("Error starting submitters: {:?}", e))
+    });
+
 
     // Blockchain updater uses the main thread.
     updater.run(TransportType::Http(blockchain_node_address))

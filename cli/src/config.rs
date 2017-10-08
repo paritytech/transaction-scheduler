@@ -22,6 +22,8 @@ pub struct Verification {
     pub min_gas_price: u64,
     pub min_schedule_block: u64,
     pub max_schedule_block: u64,
+    pub min_schedule_seconds: u64,
+    pub max_schedule_seconds: u64,
     pub certifier: Option<String>,
 }
 
