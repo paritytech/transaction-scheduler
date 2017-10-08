@@ -14,7 +14,7 @@ min_gas_price = 20_000_000_000
 min_schedule_block = 5
 max_schedule_block = 70_000
 min_schedule_seconds = 100
-max_schedule_seconds = 1_000_000
+max_schedule_seconds = 700_000
 
 # Allow only certified addresses
 # certifier = "1e2F058C43ac8965938F6e9CA286685A3E63F24E" # Foundation

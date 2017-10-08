@@ -130,11 +130,12 @@ impl<T: Transport + Send + 'static> Sink<T> {
             debug!("[{:?}] Sending transaction from: {:?}", transaction.hash(), transaction.sender());
             let hash = *transaction.hash();
             web3.eth().send_raw_transaction(transaction.rlp().into())
-                .map(|hash| {
-                    debug!("[{:?}] Submitted transaction.", hash);
-                })
-                .map_err(move |err| {
-                    warn!("[{:?}] Error submitting: {:?}.", hash, err)
+                .then(move |res| {
+                    match res {
+                        Ok(hash) => debug!("[{:?}] Submitted transaction.", hash),
+                        Err(err) => warn!("[{:?}] Error submitting: {:?}.", hash, err),
+                    }
+                    Ok(())
                 })
         }))
     }
