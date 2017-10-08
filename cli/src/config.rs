@@ -12,6 +12,7 @@ pub struct Rpc {
     pub server_threads: usize,
     pub processing_threads: usize,
     pub db_path: String,
+    pub submit_earlier: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -28,4 +29,15 @@ pub struct Verification {
 pub struct Nodes {
     pub blockchain: String,
     pub transactions: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+    use toml;
+
+    #[test]
+    fn should_parse_default_config() {
+        let _config: Config = toml::from_str(include_str!("../../config.toml")).unwrap();
+    }
 }
