@@ -73,7 +73,7 @@ impl Verifier {
 
         // Validate balance and nonce
         let blockchain = self.blockchain.clone();
-        let check_nonce = self.options.check_nonce;
+        let strict_nonce = self.options.strict_nonce;
         Box::new(self.blockchain.is_certified(sender)
             .map_err(errors::transaction)
             .and_then(move |is_certified| {
@@ -94,10 +94,16 @@ impl Verifier {
                                 format!("Insufficient balance (required: {}, got: {})", required, balance)
                             ));
                         }
-                        if check_nonce && tx.nonce != nonce {
+
+                        if strict_nonce && tx.nonce != nonce {
                             debug!("[{:?}] Rejecting. Invalid nonce: {:?} != {:?}", hash, tx.nonce, nonce);
                             return Err(errors::transaction(
                                 format!("Invalid nonce (required: {}, got: {})", nonce, tx.nonce)
+                            ));
+                        } else if !strict_nonce && tx.nonce < nonce {
+                            debug!("[{:?}] Rejecting. Invalid nonce: {:?} < {:?}", hash, tx.nonce, nonce);
+                            return Err(errors::transaction(
+                                format!("Invalid nonce (required at least: {}, got: {})", nonce, tx.nonce)
                             ));
                         }
 

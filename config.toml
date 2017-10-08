@@ -13,8 +13,8 @@ max_gas = 1_000_000
 min_gas_price = 20_000_000_000
 min_schedule_block = 5
 max_schedule_block = 100_000
-max_txs_per_sender = 1
-check_nonce = true
+max_txs_per_sender = 5
+strict_nonce = false
 # Allow only certified addresses
 # certifier = "1e2F058C43ac8965938F6e9CA286685A3E63F24E" # Foundation
 certifier = "06c4af12d9e3501c173b5d1b9dd9cf6dcc095b98" # Kovan

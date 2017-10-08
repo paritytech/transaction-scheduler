@@ -89,7 +89,7 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         min_gas_price: config.verification.min_gas_price,
         min_schedule_block: config.verification.min_schedule_block,
         max_schedule_block: config.verification.max_schedule_block,
-        check_nonce: config.verification.check_nonce,
+        strict_nonce: config.verification.strict_nonce,
         rpc_listen_address: format!("{}:{}", config.rpc.interface, config.rpc.port).parse().map_err(|e| format!("Invalid interface or port: {}", e))?,
         rpc_server_threads: config.rpc.server_threads,
         processing_threads: config.rpc.processing_threads,

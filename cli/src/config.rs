@@ -22,7 +22,7 @@ pub struct Verification {
     pub min_gas_price: u64,
     pub min_schedule_block: u64,
     pub max_schedule_block: u64,
-    pub check_nonce: bool,
+    pub strict_nonce: bool,
     pub max_txs_per_sender: usize,
     pub certifier: Option<String>,
 }
