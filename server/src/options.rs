@@ -11,6 +11,8 @@ pub struct Options {
     pub min_schedule_block: u64,
     /// Max number of blocks in future to schedule for.
     pub max_schedule_block: u64,
+    /// Nonce checking.
+    pub check_nonce: bool,
     /// JSON-RPC Listening address
     pub rpc_listen_address: ::std::net::SocketAddr,
     /// JSON-RPC Server threads
