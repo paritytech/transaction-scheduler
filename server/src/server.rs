@@ -55,6 +55,10 @@ pub fn start(
     });
 
     ServerBuilder::new(io)
+        // don't keep alive, since we'll be doing only doing one request usually
+        .keep_alive(false)
+        // enable cors for all domains
+        .cors(None.into())
         .threads(options.rpc_server_threads)
         .start_http(&options.rpc_listen_address)
 }
