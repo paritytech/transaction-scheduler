@@ -11,7 +11,7 @@ use std::{io, fs, mem};
 use byteorder::{LittleEndian, WriteBytesExt, ReadBytesExt};
 use parking_lot::RwLock;
 
-use types::{BlockNumber, Transaction, Address};
+use types::{BlockNumber, Transaction, Address, H256};
 
 mod error {
     #![allow(unknown_lints)]
@@ -95,15 +95,7 @@ impl Database {
             return Err(ErrorKind::SenderExists.into());
         }
 
-        let mut senders = self.senders.write();
-        match senders.entry(*transaction.sender()) {
-            hash_map::Entry::Vacant(entry) => {
-                entry.insert(1);
-            },
-            hash_map::Entry::Occupied(mut entry) => {
-                *entry.get_mut() += 1;
-            },
-        }
+        Senders::increment(&mut self.senders.write(), transaction.sender());
         let mut blocks = self.blocks.write();
 
         match blocks.entry(block_number) {
@@ -114,6 +106,19 @@ impl Database {
             },
             Entry::Occupied(ref mut db) => db.get_mut().insert(transaction),
         }
+    }
+
+    /// Removes a transaction from the store.
+    pub fn remove(&self, block_number: &BlockNumber, hash: &H256) -> Result<Option<Transaction>> {
+        trace!("[:?] Attempting to remove from: {}", block_number);
+        if let Some(ref mut block) = self.blocks.write().get_mut(block_number) {
+            if let Some(transaction) = block.remove(hash)? {
+                debug!("[:?] Removed from: {}", block_number);
+                Senders::decrement(&mut self.senders.write(), transaction.sender());
+                return Ok(Some(transaction))
+            }
+        }
+        Ok(None)
     }
 
     /// Returns true if there are any transactions scheduled for given block.
@@ -168,14 +173,7 @@ impl BlockDatabase {
         let mut it = TransactionsIterator::from_file(&mut file, IteratorMode::ReadOnly)?;
         while let Some(tx) = it.next() {
             trace!("Populating sender: {}", tx.sender());
-            match senders.entry(*tx.sender()) {
-                hash_map::Entry::Vacant(entry) => {
-                    entry.insert(1);
-                },
-                hash_map::Entry::Occupied(mut entry) => {
-                    *entry.get_mut() += 1;
-                },
-            }
+            Senders::increment(senders, tx.sender());
         }
         file.seek(io::SeekFrom::Start(0))?;
 
@@ -214,6 +212,37 @@ impl BlockDatabase {
         Ok(())
     }
 
+    /// Removes existing transaction from store
+    pub fn remove(&mut self, hash: &H256) -> Result<Option<Transaction>> {
+        fn search_transaction(hash: &H256, file: &fs::File, len: u64) -> Option<(Transaction, CursorState)> {
+            let mut it = TransactionsIterator::new(file, len, IteratorMode::ReadOnly);
+            while let Some(tx) = it.next() {
+                if tx.hash() == hash {
+                    return Some((tx, it.finish()));
+                }
+            }
+            None
+        };
+
+        let len = self.file.metadata()?.len();
+        self.file.seek(io::SeekFrom::Start(0))?;
+        if let Some((tx, CursorState { len, position, last_tx_len })) = search_transaction(hash, &self.file, len) {
+            // read the rest
+            let mut rest = Vec::with_capacity((len - position) as usize);
+            self.file.read_to_end(&mut rest)?;
+            // go back before the transaction
+            self.file.seek(io::SeekFrom::Start(position - last_tx_len))?;
+            // write back
+            self.file.write_all(&mut rest)?;
+            self.file.set_len(len - last_tx_len)?;
+            self.file.seek(io::SeekFrom::End(0))?;
+            self.file.flush()?;
+            Ok(Some(tx))
+        } else {
+            Ok(None)
+        }
+    }
+
     fn drain(mut self, senders: Arc<RwLock<HashMap<Address, usize>>>) -> Result<TransactionsIterator> {
         self.file.seek(io::SeekFrom::Start(0))?;
         trace!("Draining transactions from: {}", self.path.display());
@@ -229,10 +258,18 @@ pub enum IteratorMode {
     ReadOnly,
 }
 
+#[derive(Default)]
+struct CursorState {
+    len: u64,
+    position: u64,
+    last_tx_len: u64,
+}
+
 /// Transactions iterator
-pub struct TransactionsIterator {
-    content: io::Cursor<Vec<u8>>,
+pub struct TransactionsIterator<T = io::Cursor<Vec<u8>>> {
+    content: T,
     mode: IteratorMode,
+    state: CursorState,
 }
 
 impl TransactionsIterator {
@@ -241,11 +278,9 @@ impl TransactionsIterator {
         let mut content = Vec::new();
         file.read_to_end(&mut content)?;
 
+        let len = content.len() as u64;
         let content = io::Cursor::new(content);
-        Ok(TransactionsIterator {
-            content,
-            mode,
-        })
+        Ok(TransactionsIterator::new(content, len, mode))
     }
 
     /// Join two iterators together.
@@ -256,15 +291,35 @@ impl TransactionsIterator {
                 paths.extend_from_slice(&other_paths);
             }
         }
-        self.content.get_mut().extend_from_slice(&other.content.into_inner())
+        self.content.get_mut().extend_from_slice(&other.content.into_inner());
+        self.state.len += other.state.len;
     }
 }
 
-impl Iterator for TransactionsIterator {
+impl<T: io::Read> TransactionsIterator<T> {
+    /// Creates new transaction iterator from given readable object.
+    pub fn new(content: T, len: u64, mode: IteratorMode) -> Self {
+        TransactionsIterator {
+            content,
+            mode,
+            state: CursorState {
+                len,
+                last_tx_len: 0,
+                position: 0,
+            }
+        }
+    }
+
+    fn finish(self) -> CursorState {
+        self.state
+    }
+}
+
+impl<T: io::Read> Iterator for TransactionsIterator<T> {
     type Item = Transaction;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.content.position() == self.content.get_ref().len() as u64 {
+        if self.state.position == self.state.len {
             if let IteratorMode::Drain(_, ref paths) = self.mode {
                 for path in paths {
                     if let Err(err) = fs::remove_file(path) {
@@ -275,28 +330,28 @@ impl Iterator for TransactionsIterator {
             return None;
         }
 
-        let read_transaction = |mut content: &mut io::Cursor<_>| -> Result<_> {
+        let read_transaction = |content: &mut T, position: &mut u64| -> Result<_> {
             let mut sender = [0u8; 20];
             let mut hash = [0u8; 32];
             let rlp_len = content.read_u32::<LittleEndian>()? as usize;
+            *position += 4;
             let mut rlp = Vec::with_capacity(rlp_len);
             rlp.resize(rlp_len, 0);
             content.read_exact(&mut sender)?;
+            *position += 20;
             content.read_exact(&mut hash)?;
+            *position += 32;
             content.read_exact(&mut rlp)?;
+            *position += rlp_len as u64;
             Ok(Transaction::new(sender.into(), hash.into(), rlp))
         };
 
-        match read_transaction(&mut self.content) {
+        let last_position = self.state.position;
+        match read_transaction(&mut self.content, &mut self.state.position) {
             Ok(transaction) => {
+                self.state.last_tx_len = self.state.position - last_position;
                 if let IteratorMode::Drain(ref senders, _) = self.mode {
-                    if let hash_map::Entry::Occupied(mut entry) = senders.write().entry(*transaction.sender()) {
-                        if entry.get() > &1 {
-                            *entry.get_mut() -= 1;
-                        } else {
-                            entry.remove();
-                        }
-                    }
+                    Senders::decrement(&mut senders.write(), transaction.sender());
                 }
                 Some(transaction)
             },
@@ -304,6 +359,31 @@ impl Iterator for TransactionsIterator {
                 // TODO [ToDr] Can we recover from that?
                 warn!("Error reading transaction from db: {:?}", err);
                 None
+            }
+        }
+    }
+}
+
+struct Senders;
+
+impl Senders {
+    pub fn increment(senders: &mut HashMap<Address, usize>, sender: &Address) {
+        match senders.entry(*sender) {
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(1);
+            },
+            hash_map::Entry::Occupied(mut entry) => {
+                *entry.get_mut() += 1;
+            },
+        }
+    }
+
+    pub fn decrement(senders: &mut HashMap<Address, usize>, sender: &Address) {
+        if let hash_map::Entry::Occupied(mut entry) = senders.entry(*sender) {
+            if entry.get() > &1 {
+                *entry.get_mut() -= 1;
+            } else {
+                entry.remove();
             }
         }
     }
@@ -332,6 +412,7 @@ mod tests {
 
     #[test]
     fn should_save_transactions_to_disk() {
+        let _ = ::env_logger::init();
         let dir = TempDir::new("db1").unwrap();
         let mut db = BlockDatabase::new(dir.path().join("test.txs")).unwrap();
         db.insert(tx(0)).unwrap();
@@ -382,6 +463,24 @@ mod tests {
         let db = Database::open(dir.path(), 1).unwrap();
         let mut iter = db.drain(5).unwrap().unwrap();
         assert_eq!(iter.next(), Some(tx(1)));
+        assert_eq!(iter.next(), Some(tx(2)));
+        assert_eq!(iter.next(), Some(tx(0)));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn should_remove_transaction() {
+        let dir = TempDir::new("db1").unwrap();
+        {
+            let db = Database::open(dir.path(), 1).unwrap();
+            db.insert(5, tx(0)).unwrap();
+            db.insert(3, tx(1)).unwrap();
+            db.insert(3, tx(2)).unwrap();
+            db.remove(&3, tx(1).hash()).unwrap();
+        }
+
+        let db = Database::open(dir.path(), 1).unwrap();
+        let mut iter = db.drain(5).unwrap().unwrap();
         assert_eq!(iter.next(), Some(tx(2)));
         assert_eq!(iter.next(), Some(tx(0)));
         assert_eq!(iter.next(), None);
