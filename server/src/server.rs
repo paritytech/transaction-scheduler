@@ -12,34 +12,43 @@ use blockchain::Blockchain;
 use database::{self, Database};
 use errors;
 use options::Options;
-use types::{BlockNumber, Bytes};
+use types::{Bytes, Condition};
 use verifier::Verifier;
 
 /// Starts the JSON-RPC server.
 pub fn start(
-    database: Arc<Database>,
+    block_db: Arc<Database>,
+    timestamp_db: Arc<Database>,
     blockchain: Arc<Blockchain>,
     options: Options,
 ) -> Result<Server, Error> {
     let pool = CpuPool::new(options.processing_threads);
-    let verifier = Arc::new(Verifier::new(blockchain, database.clone(), options.clone()));
+    let block_verifier = Arc::new(Verifier::new_block(blockchain.clone(), block_db.clone(), options.clone()));
+    let timestamp_verifier = Arc::new(Verifier::new_timestamp(blockchain, timestamp_db.clone(), options.clone()));
 
     let mut io = IoHandler::default();
     io.add_method("scheduleTransaction", move |params: Params| {
         trace!("Incoming request: {:?}", params);
-        let (block_number, transaction) = match params.parse::<(BlockNumber, Bytes)>() {
+        let (condition, transaction) = match params.parse::<(Condition, Bytes)>() {
             Ok(res) => res,
             Err(err) => return Either::A(future::err(err)),
         };
 
-        let verifier = verifier.clone();
-        let database = database.clone();
+        let block_verifier = block_verifier.clone();
+        let timestamp_verifier = timestamp_verifier.clone();
+        let block_db = block_db.clone();
+        let timestamp_db = timestamp_db.clone();
         Either::B(pool.spawn_fn(move || {
-            debug!("Verifying request: {:?}", block_number);
-            verifier.verify(block_number, transaction)
-                .and_then(move |(block_number, transaction)| {
+            debug!("Verifying request: {:?}", condition);
+            let (num, verifier, db) = match condition {
+                Condition::Number(block_number) => (block_number, block_verifier, block_db),
+                Condition::Timestamp(time) => (time, timestamp_verifier, timestamp_db),
+            };
+
+            verifier.verify(num, transaction)
+                .and_then(move |(num, transaction)| {
                     let hash = *transaction.hash();
-                    if let Err(e) = database.insert(block_number, transaction) {
+                    if let Err(e) = db.insert(num, transaction) {
                         if let &database::ErrorKind::SenderExists = e.kind() {
                             warn!("DB sender exists: {}", e);
                         } else {
@@ -47,7 +56,7 @@ pub fn start(
                         }
                         return Err(errors::internal(e))
                     }
-                    info!("[{:?}] Scheduled for {}", hash, block_number);
+                    info!("[{:?}] Scheduled for {}", hash, num);
                     // TODO [ToDr] After transactions are submitted make sure they are mined, if not - resubmit.
                     Ok(Value::String("accepted".into()))
                 })
@@ -55,7 +64,7 @@ pub fn start(
     });
 
     ServerBuilder::new(io)
-        // don't keep alive, since we'll be doing only doing one request usually
+        // don't keep alive, since we're usually doing only one request
         .keep_alive(false)
         // enable cors for all domains
         .cors(None.into())

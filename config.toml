@@ -12,7 +12,9 @@ chain_id = 42
 max_gas = 1_000_000
 min_gas_price = 20_000_000_000
 min_schedule_block = 5
-max_schedule_block = 100_000
+max_schedule_block = 70_000
+min_schedule_seconds = 100
+max_schedule_seconds = 700_000
 max_txs_per_sender = 5
 strict_nonce = false
 # Allow only certified addresses

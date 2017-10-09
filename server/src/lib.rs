@@ -11,6 +11,8 @@ extern crate error_chain;
 extern crate futures;
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 extern crate byteorder;
 extern crate ethcore;
@@ -23,6 +25,7 @@ extern crate rlp;
 extern crate rustc_hex;
 extern crate serde;
 extern crate serde_json;
+extern crate time;
 extern crate web3;
 
 #[cfg(test)]

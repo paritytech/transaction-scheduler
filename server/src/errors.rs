@@ -21,6 +21,13 @@ pub fn block<T: ::std::fmt::Display>(error: T) -> Error {
 		data: Some(Value::String(format!("{}", error))),
 	}
 }
+pub fn timestamp<T: ::std::fmt::Display>(error: T) -> Error {
+	Error {
+		code: ErrorCode::InvalidParams,
+		message: "Invalid timestamp.".into(),
+		data: Some(Value::String(format!("{}", error))),
+	}
+}
 pub fn internal<T: ::std::fmt::Display>(error: T) -> Error {
 	Error {
 		code: ErrorCode::InternalError,

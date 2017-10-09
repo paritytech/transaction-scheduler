@@ -14,14 +14,78 @@ use TransportType;
 
 /// Spawns given number of transports and runs a submitter.
 /// Each transport will receive the same set of transactions.
+/// This method listens for incoming block numbers and
+/// submits all transactions scheduled for given block.
 ///
 /// This method blocks until block subscription is over.
-pub fn run<I: Iterator<Item=TransportType>>(
-    mut types: I,
+pub fn run_block<I: Iterator<Item=TransportType>>(
+    types: I,
     listener: mpsc::Receiver<BlockNumber>,
-    database: Arc<Database>,
+    block_db: Arc<Database>,
     submit_earlier: u64,
 ) -> Result<(), Error> {
+    let (sinks, _eloops) = init_transports(types)?;
+    let db = block_db.clone();
+    listener
+        .map(move |block| block + submit_earlier)
+        .filter(move |block| db.has(block))
+        .for_each(move |block| {
+            debug!("Sending transactions for block: {}", block);
+            match block_db.drain(block) {
+                Ok(Some(iterator)) => Either::A(Submitter::new(sinks.clone(), iterator)),
+                Ok(None) => {
+                    warn!("No transactions found in block: {}", block);
+                    Either::B(future::ok(()))
+                }
+                Err(err) => {
+                    error!("Unable to read transactions for block {}: {:?}", block, err);
+                    Either::B(future::ok(()))
+                }
+            }
+        })
+        .wait()
+        .map_err(|_| unreachable!())
+}
+
+/// Spawns given number of transports and runs a submitter.
+/// Each transport will receive the same set of transactions.
+/// This method periodically submits all transactions
+/// scheduled for current time.
+///
+/// This method blocks until block subscription is over.
+pub fn run_timestamp<I: Iterator<Item=TransportType>>(
+    types: I,
+    timestamp_db: Arc<Database>,
+) -> Result<(), Error> {
+    let (sinks, _eloops) = init_transports(types)?;
+
+    loop {
+        let time = ::time::now_utc().to_timespec().sec as u64;
+        match timestamp_db.drain(time) {
+            Ok(Some(iterator)) => {
+                debug!("Sending transactions for time: {}", time);
+                Submitter::new(sinks.clone(), iterator).wait()
+                    .expect("Submitter is never returning error; qed");
+            }
+            Err(err) => {
+                error!("Unable to read transactions for timestamp {}: {:?}", time, err);
+            },
+            _ => {}
+        }
+
+        if ::std::thread::panicking() {
+            break;
+        }
+
+        ::std::thread::sleep(::std::time::Duration::from_secs(1))
+    }
+
+    Ok(())
+}
+
+fn init_transports<I: Iterator<Item=TransportType>>(mut types: I) 
+    -> Result<(Vec<mpsc::Sender<Transaction>>, Vec<transports::EventLoopHandle>), Error>
+{
     let mut sinks = Vec::new();
     let mut eloops = Vec::new();
     while let Some(typ) = types.next() {
@@ -39,26 +103,7 @@ pub fn run<I: Iterator<Item=TransportType>>(
         eloops.push(eloop);
     }
 
-    let db = database.clone();
-    listener
-        .map(move |block| block + submit_earlier)
-        .filter(move |block| db.has(block))
-        .for_each(move |block| {
-            debug!("Sending transactions for block: {}", block);
-            match database.drain(block) {
-                Ok(Some(iterator)) => Either::A(Submitter::new(sinks.clone(), iterator)),
-                Ok(None) => {
-                    warn!("No transactions found in block: {}", block);
-                    Either::B(future::ok(()))
-                }
-                Err(err) => {
-                    error!("Unable to read transactions for block {}: {:?}", block, err);
-                    Either::B(future::ok(()))
-                }
-            }
-        })
-        .wait()
-        .map_err(|_| unreachable!())
+    Ok((sinks, eloops))
 }
 
 /// A sink for transactions that should be submitted to the network.
@@ -85,11 +130,12 @@ impl<T: Transport + Send + 'static> Sink<T> {
             debug!("[{:?}] Sending transaction from: {:?}", transaction.hash(), transaction.sender());
             let hash = *transaction.hash();
             web3.eth().send_raw_transaction(transaction.rlp().into())
-                .map(|hash| {
-                    debug!("[{:?}] Submitted transaction.", hash);
-                })
-                .map_err(move |err| {
-                    warn!("[{:?}] Error submitting: {:?}.", hash, err)
+                .then(move |res| {
+                    match res {
+                        Ok(hash) => debug!("[{:?}] Submitted transaction.", hash),
+                        Err(err) => warn!("[{:?}] Error submitting: {:?}.", hash, err),
+                    }
+                    Ok(())
                 })
         }))
     }
