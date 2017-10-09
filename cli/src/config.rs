@@ -24,6 +24,8 @@ pub struct Verification {
     pub max_schedule_block: u64,
     pub min_schedule_seconds: u64,
     pub max_schedule_seconds: u64,
+    pub strict_nonce: bool,
+    pub max_txs_per_sender: usize,
     pub certifier: Option<String>,
 }
 

@@ -91,6 +91,7 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         max_schedule_block: config.verification.max_schedule_block,
         min_schedule_seconds: config.verification.min_schedule_seconds,
         max_schedule_seconds: config.verification.max_schedule_seconds,
+        strict_nonce: config.verification.strict_nonce,
         rpc_listen_address: format!("{}:{}", config.rpc.interface, config.rpc.port).parse().map_err(|e| format!("Invalid interface or port: {}", e))?,
         rpc_server_threads: config.rpc.server_threads,
         processing_threads: config.rpc.processing_threads,
@@ -108,9 +109,11 @@ fn execute<S, I>(command: I) -> Result<String, String> where
         .map_err(|e| format!("Error starting blockchain cache: {:?}", e))?
     );
 
-    let block_database = Arc::new(database::Database::open(&config.rpc.db_path)
+    // TODO [ToDr] The limit is not shared between dbs.
+    let max_txs_per_sender= config.verification.max_txs_per_sender;
+    let block_database = Arc::new(database::Database::open(&config.rpc.db_path, max_txs_per_sender)
         .map_err(|e| format!("Error opening database: {:?}", e))?);
-    let timestamp_database = Arc::new(database::Database::open(&format!("{}/time/", config.rpc.db_path))
+    let timestamp_database = Arc::new(database::Database::open(&format!("{}/time/", config.rpc.db_path), max_txs_per_sender)
         .map_err(|e| format!("Error opening database: {:?}", e))?);
 
     // Updater is responsible for notifying about latest block.

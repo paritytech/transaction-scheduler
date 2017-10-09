@@ -15,6 +15,8 @@ pub struct Options {
     pub min_schedule_seconds: u64,
     /// Max number of seconds in future to schedule for.
     pub max_schedule_seconds: u64,
+    /// Require nonce to be equal to current nonce (and not only greater).
+    pub strict_nonce: bool,
     /// JSON-RPC Listening address
     pub rpc_listen_address: ::std::net::SocketAddr,
     /// JSON-RPC Server threads

@@ -1,7 +1,8 @@
 //! Transactions storage
 
 use std::collections::btree_map::Entry;
-use std::collections::{HashSet, BTreeMap};
+use std::collections::hash_map;
+use std::collections::{HashMap, BTreeMap};
 use std::io::{Read, Write, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -37,18 +38,19 @@ pub use self::error::*;
 #[derive(Debug)]
 pub struct Database {
     path: PathBuf,
-    senders: Arc<RwLock<HashSet<Address>>>,
+    senders: Arc<RwLock<HashMap<Address, usize>>>,
     blocks: RwLock<BTreeMap<BlockNumber, BlockDatabase>>,
+    max_txs_per_sender: usize,
 }
 
 impl Database {
     const EXT: &'static str = "txs";
 
     /// Open and load existing database in given directory.
-    pub fn open<T: AsRef<Path>>(path: T) -> Result<Self> {
+    pub fn open<T: AsRef<Path>>(path: T, max_txs_per_sender: usize) -> Result<Self> {
         fs::create_dir_all(&path)?;
         let mut blocks = BTreeMap::new();
-        let mut senders = HashSet::new();
+        let mut senders = HashMap::new();
 
         // Re-open all existing block database that are found
         for entry in fs::read_dir(&path)? {
@@ -77,23 +79,31 @@ impl Database {
             path: path.as_ref().to_owned(),
             senders: Arc::new(RwLock::new(senders)),
             blocks: RwLock::new(blocks),
+            max_txs_per_sender,
         })
     }
 
-    /// Returns true if the sender has already scheduled a transaction.
-    pub fn has_sender(&self, sender: &Address) -> bool {
-        self.senders.read().contains(sender)
+    /// Returns number of transactions already scheduled from given sender.
+    pub fn sender_allowed(&self, sender: &Address) -> bool {
+        *self.senders.read().get(sender).unwrap_or(&0) < self.max_txs_per_sender
     }
 
     /// Inserts new transactions to the store.
     pub fn insert(&self, block_number: BlockNumber, transaction: Transaction) -> Result<()> {
-        if self.senders.read().contains(&transaction.sender()) {
-            trace!("[{:?}] Rejecting because sender is already in db.", transaction.hash());
+        if !self.sender_allowed(transaction.sender()) {
+            trace!("[{:?}] Rejecting because sender already has too many transactions in db.", transaction.hash());
             return Err(ErrorKind::SenderExists.into());
         }
 
         let mut senders = self.senders.write();
-        senders.insert(*transaction.sender());
+        match senders.entry(*transaction.sender()) {
+            hash_map::Entry::Vacant(entry) => {
+                entry.insert(1);
+            },
+            hash_map::Entry::Occupied(mut entry) => {
+                *entry.get_mut() += 1;
+            },
+        }
         let mut blocks = self.blocks.write();
 
         match blocks.entry(block_number) {
@@ -147,8 +157,8 @@ struct BlockDatabase {
 }
 
 impl BlockDatabase {
-    /// Open existing transactions store and load senders to given `HashSet`.
-    pub fn open<T: AsRef<Path>>(path: T, senders: &mut HashSet<Address>) -> Result<Self> {
+    /// Open existing transactions store and load senders to given `HashMap`.
+    pub fn open<T: AsRef<Path>>(path: T, senders: &mut HashMap<Address, usize>) -> Result<Self> {
         let mut file = fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -158,7 +168,14 @@ impl BlockDatabase {
         let mut it = TransactionsIterator::from_file(&mut file, IteratorMode::ReadOnly)?;
         while let Some(tx) = it.next() {
             trace!("Populating sender: {}", tx.sender());
-            senders.insert(*tx.sender());
+            match senders.entry(*tx.sender()) {
+                hash_map::Entry::Vacant(entry) => {
+                    entry.insert(1);
+                },
+                hash_map::Entry::Occupied(mut entry) => {
+                    *entry.get_mut() += 1;
+                },
+            }
         }
         file.seek(io::SeekFrom::Start(0))?;
 
@@ -197,7 +214,7 @@ impl BlockDatabase {
         Ok(())
     }
 
-    fn drain(mut self, senders: Arc<RwLock<HashSet<Address>>>) -> Result<TransactionsIterator> {
+    fn drain(mut self, senders: Arc<RwLock<HashMap<Address, usize>>>) -> Result<TransactionsIterator> {
         self.file.seek(io::SeekFrom::Start(0))?;
         trace!("Draining transactions from: {}", self.path.display());
         TransactionsIterator::from_file(&mut self.file, IteratorMode::Drain(senders, vec![self.path]))
@@ -207,7 +224,7 @@ impl BlockDatabase {
 /// Iteration mode
 pub enum IteratorMode {
     /// Remove the files after iterator is drained and remove senders from the set.
-    Drain(Arc<RwLock<HashSet<Address>>>, Vec<PathBuf>),
+    Drain(Arc<RwLock<HashMap<Address, usize>>>, Vec<PathBuf>),
     /// Only read transactions.
     ReadOnly,
 }
@@ -273,7 +290,13 @@ impl Iterator for TransactionsIterator {
         match read_transaction(&mut self.content) {
             Ok(transaction) => {
                 if let IteratorMode::Drain(ref senders, _) = self.mode {
-                    senders.write().remove(transaction.sender());
+                    if let hash_map::Entry::Occupied(mut entry) = senders.write().entry(*transaction.sender()) {
+                        if entry.get() > &1 {
+                            *entry.get_mut() -= 1;
+                        } else {
+                            entry.remove();
+                        }
+                    }
                 }
                 Some(transaction)
             },
@@ -325,11 +348,11 @@ mod tests {
     #[test]
     fn should_save_transaction() {
         let dir = TempDir::new("db1").unwrap();
-        let db = Database::open(dir.path()).unwrap();
+        let db = Database::open(dir.path(), 2).unwrap();
         db.insert(5, tx(0)).unwrap();
         db.insert(3, tx(1)).unwrap();
         db.insert(3, tx(2)).unwrap();
-
+        db.insert(6, tx(0)).unwrap();
         // This should be an error, cause there is already a transaction from the same sender.
         db.insert(6, tx(0)).unwrap_err();
 
@@ -350,13 +373,13 @@ mod tests {
     fn should_restore_db_from_disk() {
         let dir = TempDir::new("db1").unwrap();
         {
-            let db = Database::open(dir.path()).unwrap();
+            let db = Database::open(dir.path(), 1).unwrap();
             db.insert(5, tx(0)).unwrap();
             db.insert(3, tx(1)).unwrap();
             db.insert(3, tx(2)).unwrap();
         }
 
-        let db = Database::open(dir.path()).unwrap();
+        let db = Database::open(dir.path(), 1).unwrap();
         let mut iter = db.drain(5).unwrap().unwrap();
         assert_eq!(iter.next(), Some(tx(1)));
         assert_eq!(iter.next(), Some(tx(2)));

@@ -76,13 +76,14 @@ impl Verifier {
 
         let (hash, sender) = (tx.hash(), tx.sender());
         // Verify transaction sender
-        if self.database.has_sender(&sender) {
-            debug!("[{:?}] Rejecting. Sender already present: {}", hash, sender);
-            return Box::new(future::err(errors::transaction("Sender already scheduled.")));
+        if !self.database.sender_allowed(&sender) {
+            debug!("[{:?}] Rejecting. Sender already has too many transactions: {}", hash, sender);
+            return Box::new(future::err(errors::transaction("Sender already has too many transactions.")));
         }
 
         // Validate balance and nonce
         let blockchain = self.blockchain.clone();
+        let strict_nonce = self.options.strict_nonce;
         Box::new(self.blockchain.is_certified(sender)
             .map_err(errors::transaction)
             .and_then(move |is_certified| {
@@ -103,10 +104,16 @@ impl Verifier {
                                 format!("Insufficient balance (required: {}, got: {})", required, balance)
                             ));
                         }
-                        if tx.nonce != nonce {
+
+                        if strict_nonce && tx.nonce != nonce {
                             debug!("[{:?}] Rejecting. Invalid nonce: {:?} != {:?}", hash, tx.nonce, nonce);
                             return Err(errors::transaction(
                                 format!("Invalid nonce (required: {}, got: {})", nonce, tx.nonce)
+                            ));
+                        } else if !strict_nonce && tx.nonce < nonce {
+                            debug!("[{:?}] Rejecting. Invalid nonce: {:?} < {:?}", hash, tx.nonce, nonce);
+                            return Err(errors::transaction(
+                                format!("Invalid nonce (required at least: {}, got: {})", nonce, tx.nonce)
                             ));
                         }
 
