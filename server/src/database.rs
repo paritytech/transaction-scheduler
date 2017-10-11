@@ -314,8 +314,11 @@ impl Iterator for TransactionsIterator {
             Err(ref err) if err.kind() == io::ErrorKind::UnexpectedEof => {
                 if let IteratorMode::Drain(_, ref paths) = self.mode {
                     for path in paths {
-                        if let Err(err) = fs::remove_file(path) {
-                            warn!("Unable to remove processed file at {}: {:?}", path.display(), err);
+                        let mut new = path.clone();
+                        new.set_extension("old");
+
+                        if let Err(err) = fs::rename(&path, new) {
+                            warn!("Unable to rename processed file at {}: {:?}", path.display(), err);
                         }
                     }
                 }
