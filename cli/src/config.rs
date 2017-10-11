@@ -1,4 +1,5 @@
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub rpc: Rpc,
     pub verification: Verification,
@@ -6,6 +7,7 @@ pub struct Config {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rpc {
     pub interface: String,
     pub port: u16,
@@ -16,13 +18,12 @@ pub struct Rpc {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Verification {
     pub chain_id: u64,
     pub max_gas: u64,
     pub min_gas_price: u64,
-    pub min_schedule_block: u64,
     pub max_schedule_block: u64,
-    pub min_schedule_seconds: u64,
     pub max_schedule_seconds: u64,
     pub strict_nonce: bool,
     pub max_txs_per_sender: usize,
@@ -30,6 +31,7 @@ pub struct Verification {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Nodes {
     pub blockchain: String,
     pub transactions: Vec<String>,

@@ -125,15 +125,6 @@ impl Verifier {
 
     fn verify_block_number(&self, block_number: u64) -> Result<(), Error> {
         let latest_block = self.blockchain.latest_block();
-        if block_number <= latest_block + self.options.min_schedule_block {
-            debug!("Rejecting request. Block is too low: {} <= {}", block_number, latest_block + self.options.min_schedule_block);
-            return Err(errors::block(format!(
-                "Block number is too low: {} <= {}",
-                block_number,
-                latest_block + self.options.min_schedule_block,
-            )));
-        }
-
         if block_number > latest_block + self.options.max_schedule_block {
             debug!("Rejecting request. Block is too high: {} > {}", block_number, latest_block + self.options.max_schedule_block);
             return Err(errors::block(format!(
@@ -148,15 +139,6 @@ impl Verifier {
 
     fn verify_timestamp(&self, time: u64) -> Result<(), Error> {
         let current_time_seconds = ::time::now_utc().to_timespec().sec as u64;
-        if time <= current_time_seconds + self.options.min_schedule_seconds {
-            debug!("Rejecting request. Timestamp is too low: {} <= {}", time, current_time_seconds + self.options.min_schedule_seconds);
-            return Err(errors::timestamp(format!(
-                "Timestamp is too low: {} <= {}",
-                time,
-                current_time_seconds + self.options.min_schedule_seconds,
-            )));
-        }
-
         if time > current_time_seconds + self.options.max_schedule_seconds {
             debug!("Rejecting request. Timestamp is too high: {} > {}", time, current_time_seconds + self.options.max_schedule_seconds);
             return Err(errors::timestamp(format!(
