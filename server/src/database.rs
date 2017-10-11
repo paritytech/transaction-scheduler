@@ -170,7 +170,7 @@ impl BlockDatabase {
             .open(&path)?;
 
         trace!("Reading transactions from: {}", path.as_ref().display());
-        let mut it = TransactionsIterator::from_file(&mut file, IteratorMode::ReadOnly)?;
+        let mut it = TransactionsIterator::new(&mut file, IteratorMode::ReadOnly)?;
         while let Some(tx) = it.next() {
             trace!("Populating sender: {}", tx.sender());
             Senders::increment(senders, tx.sender());
@@ -214,39 +214,33 @@ impl BlockDatabase {
 
     /// Removes existing transaction from store
     pub fn remove(&mut self, hash: &H256) -> Result<Option<Transaction>> {
-        fn search_transaction(hash: &H256, file: &fs::File, len: u64) -> Option<(Transaction, CursorState)> {
-            let mut it = TransactionsIterator::new(file, len, IteratorMode::ReadOnly);
-            while let Some(tx) = it.next() {
-                if tx.hash() == hash {
-                    return Some((tx, it.finish()));
-                }
-            }
-            None
+        let (tx, position_before_tx, cursor)  = {
+            let mut it = TransactionsIterator::new(&mut self.file, IteratorMode::ReadOnly)?;
+            let tx = it.find(|tx| tx.hash() == hash);
+
+            (tx, it.position_before_tx, it.content)
         };
 
-        let len = self.file.metadata()?.len();
-        self.file.seek(io::SeekFrom::Start(0))?;
-        if let Some((tx, CursorState { len, position, last_tx_len })) = search_transaction(hash, &self.file, len) {
-            // read the rest
-            let mut rest = Vec::with_capacity((len - position) as usize);
-            self.file.read_to_end(&mut rest)?;
-            // go back before the transaction
-            self.file.seek(io::SeekFrom::Start(position - last_tx_len))?;
-            // write back
-            self.file.write_all(&mut rest)?;
-            self.file.set_len(len - last_tx_len)?;
-            self.file.seek(io::SeekFrom::End(0))?;
-            self.file.flush()?;
-            Ok(Some(tx))
-        } else {
-            Ok(None)
-        }
+        let tx = match tx {
+            Some(tx) => tx,
+            None => return Ok(None),
+        };
+
+        // go back before the transaction
+        self.file.seek(io::SeekFrom::Start(position_before_tx))?;
+        // write back
+        let position_after_tx = cursor.position() as usize;
+        let mut content = cursor.into_inner();
+        let new_length = content.len() - (position_after_tx - position_before_tx as usize);
+        self.file.write_all(&mut content[position_after_tx.. ])?;
+        self.file.set_len(new_length as u64)?;
+        self.file.flush()?;
+        Ok(Some(tx))
     }
 
     fn drain(mut self, senders: Arc<RwLock<HashMap<Address, usize>>>) -> Result<TransactionsIterator> {
-        self.file.seek(io::SeekFrom::Start(0))?;
         trace!("Draining transactions from: {}", self.path.display());
-        TransactionsIterator::from_file(&mut self.file, IteratorMode::Drain(senders, vec![self.path]))
+        Ok(TransactionsIterator::new(&mut self.file, IteratorMode::Drain(senders, vec![self.path]))?)
     }
 }
 
@@ -258,29 +252,26 @@ pub enum IteratorMode {
     ReadOnly,
 }
 
-#[derive(Default)]
-struct CursorState {
-    len: u64,
-    position: u64,
-    last_tx_len: u64,
-}
-
 /// Transactions iterator
-pub struct TransactionsIterator<T = io::Cursor<Vec<u8>>> {
-    content: T,
+pub struct TransactionsIterator {
+    content: io::Cursor<Vec<u8>>,
+    position_before_tx: u64,
     mode: IteratorMode,
-    state: CursorState,
 }
 
 impl TransactionsIterator {
-    /// Iterate over transactions from given file.
-    pub fn from_file(file: &mut fs::File, mode: IteratorMode) -> Result<Self> {
-        let mut content = Vec::new();
-        file.read_to_end(&mut content)?;
+    /// Creates new transaction iterator by draining given file.
+    pub fn new(content: &mut fs::File, mode: IteratorMode) -> io::Result<Self> {
+        content.seek(io::SeekFrom::Start(0))?;
 
-        let len = content.len() as u64;
-        let content = io::Cursor::new(content);
-        Ok(TransactionsIterator::new(content, len, mode))
+        let mut bytes = Vec::new();
+        content.read_to_end(&mut bytes)?;
+
+        Ok(TransactionsIterator {
+            content: io::Cursor::new(bytes),
+            position_before_tx: 0,
+            mode,
+        })
     }
 
     /// Join two iterators together.
@@ -292,68 +283,43 @@ impl TransactionsIterator {
             }
         }
         self.content.get_mut().extend_from_slice(&other.content.into_inner());
-        self.state.len += other.state.len;
     }
 }
 
-impl<T: io::Read> TransactionsIterator<T> {
-    /// Creates new transaction iterator from given readable object.
-    pub fn new(content: T, len: u64, mode: IteratorMode) -> Self {
-        TransactionsIterator {
-            content,
-            mode,
-            state: CursorState {
-                len,
-                last_tx_len: 0,
-                position: 0,
-            }
-        }
-    }
-
-    fn finish(self) -> CursorState {
-        self.state
-    }
-}
-
-impl<T: io::Read> Iterator for TransactionsIterator<T> {
+impl Iterator for TransactionsIterator {
     type Item = Transaction;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.state.position == self.state.len {
-            if let IteratorMode::Drain(_, ref paths) = self.mode {
-                for path in paths {
-                    if let Err(err) = fs::remove_file(path) {
-                        warn!("Unable to remove processed file at {}: {:?}", path.display(), err);
-                    }
-                }
-            }
-            return None;
-        }
-
-        let read_transaction = |content: &mut T, position: &mut u64| -> Result<_> {
+        let read_transaction = |content: &mut io::Cursor<_>| -> io::Result<_> {
             let mut sender = [0u8; 20];
             let mut hash = [0u8; 32];
             let rlp_len = content.read_u32::<LittleEndian>()? as usize;
-            *position += 4;
             let mut rlp = Vec::with_capacity(rlp_len);
             rlp.resize(rlp_len, 0);
             content.read_exact(&mut sender)?;
-            *position += 20;
             content.read_exact(&mut hash)?;
-            *position += 32;
             content.read_exact(&mut rlp)?;
-            *position += rlp_len as u64;
             Ok(Transaction::new(sender.into(), hash.into(), rlp))
         };
 
-        let last_position = self.state.position;
-        match read_transaction(&mut self.content, &mut self.state.position) {
+        self.position_before_tx = self.content.position();
+        match read_transaction(&mut self.content) {
             Ok(transaction) => {
-                self.state.last_tx_len = self.state.position - last_position;
                 if let IteratorMode::Drain(ref senders, _) = self.mode {
                     Senders::decrement(&mut senders.write(), transaction.sender());
                 }
                 Some(transaction)
+            },
+            // Cursor is drained
+            Err(ref err) if err.kind() == io::ErrorKind::UnexpectedEof => {
+                if let IteratorMode::Drain(_, ref paths) = self.mode {
+                    for path in paths {
+                        if let Err(err) = fs::remove_file(path) {
+                            warn!("Unable to remove processed file at {}: {:?}", path.display(), err);
+                        }
+                    }
+                }
+                return None;
             },
             Err(err) => {
                 // TODO [ToDr] Can we recover from that?

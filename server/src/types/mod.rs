@@ -1,6 +1,4 @@
-use std::io::{self, Write};
-
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use byteorder::{LittleEndian, ByteOrder};
 use ethcore::transaction::SignedTransaction;
 use rlp;
 
@@ -73,7 +71,7 @@ impl TransactionId {
         if bytes.len() != Self::LEN {
             return None;
         }
-        let num = io::Cursor::new(&bytes[1..]).read_u64::<LittleEndian>().expect("Length is valid; qed");
+        let num = LittleEndian::read_u64(&bytes[1..]);
         let hash = bytes[9..].into();
     
         Some(TransactionId {
@@ -84,14 +82,12 @@ impl TransactionId {
     }
 
     pub fn to_bytes(&self) -> Bytes {
-        const PROOF: &'static str = "Target vec correctl initialized; qed";
         let mut bytes = Vec::with_capacity(Self::LEN);
         bytes.resize(Self::LEN, 0);
-        let mut bytes = io::Cursor::new(bytes); 
-        bytes.write_all(&[self.is_timestamp as u8]).expect(PROOF);
-        bytes.write_u64::<LittleEndian>(self.num).expect(PROOF);
-        bytes.write_all(&*self.hash).expect(PROOF);
+        bytes[0] = self.is_timestamp as u8;
+        LittleEndian::write_u64(&mut bytes[1..], self.num);
+        bytes[9..].copy_from_slice(&*self.hash);
 
-        bytes.into_inner().into()
+        bytes.into()
     }
 }
