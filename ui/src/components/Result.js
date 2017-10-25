@@ -1,7 +1,7 @@
 import React from 'react'
 import { Message } from 'semantic-ui-react'
 
-export default function Result ({ result}) {
+export default function Result ({ result }) {
   if (!result) {
     return (<span />)
   }

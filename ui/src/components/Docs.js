@@ -23,7 +23,7 @@ export default class Docs extends Component {
 
     return (
       <Container text style={{ marginTop: '2rem' }}>
-        <Header as='h1'><a name="docs">RPC Documentation</a></Header>
+        <Header as='h1'><a name='docs'>RPC Documentation</a></Header>
         <p>Transaction Scheduler exposes a JSON-RPC methods allowing you to integrate your app with it.</p>
         <Grid doubling columns={2} divided>
           <Grid.Column>
@@ -31,7 +31,7 @@ export default class Docs extends Component {
             <pre className='code'>{ JSON.stringify(request, null, 2) }</pre>
           </Grid.Column>
           <Grid.Column>
-            <Scheduler onNewCondition={ onNewCondition } condition={ condition }/>
+            <Scheduler onNewCondition={onNewCondition} condition={condition} />
           </Grid.Column>
         </Grid>
 
