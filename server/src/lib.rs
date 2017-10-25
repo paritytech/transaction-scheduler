@@ -26,6 +26,8 @@ extern crate rustc_hex;
 extern crate serde;
 extern crate serde_json;
 extern crate time;
+#[cfg(feature = "ui")]
+extern crate txsched_ui;
 extern crate web3;
 
 #[cfg(test)]
@@ -39,6 +41,11 @@ pub mod submitter;
 mod errors;
 mod options;
 mod types;
+#[cfg(feature = "ui")]
+mod ui;
+#[cfg(not(feature = "ui"))]
+mod ui { pub use super::ui_noop::*; }
+mod ui_noop;
 mod verifier;
 
 pub use options::Options;

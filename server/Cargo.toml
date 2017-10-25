@@ -22,6 +22,11 @@ web3 = { git = "https://github.com/tomusdrw/rust-web3.git" }
 ethcore-bigint = { git = "https://github.com/paritytech/parity.git" }
 ethcore = { git = "https://github.com/paritytech/parity.git" }
 rlp = { git = "https://github.com/paritytech/parity.git" }
+txsched-ui = { git = "https://github.com/paritytech/transaction-scheduler.git", branch = "precompiled", optional = true }
+
+[features]
+default = ["ui"]
+ui = ["txsched-ui"]
 
 [dev-dependencies]
 tempdir = "0.3"

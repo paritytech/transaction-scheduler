@@ -278,7 +278,7 @@ impl Iterator for TransactionsIterator {
             return None;
         }
 
-        let read_transaction = |mut content: &mut io::Cursor<_>| -> Result<_> {
+        let read_transaction = |content: &mut io::Cursor<_>| -> Result<_> {
             let mut sender = [0u8; 20];
             let mut hash = [0u8; 32];
             let rlp_len = content.read_u32::<LittleEndian>()? as usize;

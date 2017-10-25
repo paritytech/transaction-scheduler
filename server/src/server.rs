@@ -68,6 +68,7 @@ pub fn start(
         .keep_alive(false)
         // enable cors for all domains
         .cors(None.into())
+        .request_middleware(::ui::Ui::default())
         .threads(options.rpc_server_threads)
         .start_http(&options.rpc_listen_address)
 }
