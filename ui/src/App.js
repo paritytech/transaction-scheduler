@@ -12,13 +12,20 @@ import './App.css'
 
 class App extends Component {
   state = {
-    menuFixed: false
+    menuFixed: false,
+    rlp: '0x<signed-transaction-rlp>',
+    condition: { block: '0x12345' },
   }
 
   stickTopMenu = () => this.setState({ menuFixed: true })
   unStickTopMenu = () => this.setState({ menuFixed: false })
 
+  handleRlpChange = rlp => this.setState({ rlp })
+  handleCondition = condition => this.setState({ condition })
+
   render () {
+    const { rlp, condition } = this.state
+
     return (
       <div>
         <Container text style={{ marginTop: '2rem' }}>
@@ -26,15 +33,27 @@ class App extends Component {
           <p>Parity Transaction Scheduler allows you to submit a pre-signed transaction to be released to the network (propagated to peers) at specific time or block.</p>
           <ul>
             <li><a href="https://txsched.parity.io">Foundation Scheduler</a></li>
-            <li><a href="https://kovan-txsched.parity.io">Kovan Scheduler</a></li>
+            <li><a href="https://txsched-kovan.parity.io">Kovan Scheduler</a></li>
           </ul>
         </Container>
 
         { this.renderMenu() }
 
-        { <SendRaw /> }
-        { <Compose /> }
-        { <Docs /> }
+        { <SendRaw
+          condition={condition}
+          onNewCondition={this.handleCondition}
+          onRlpChange={this.handleRlpChange}
+          rlp={rlp}
+        /> }
+        { <Compose
+          condition={condition}
+          onNewCondition={this.handleCondition}
+        /> }
+        { <Docs
+          condition={condition}
+          onNewCondition={this.handleCondition}
+          rlp={rlp}
+        /> }
       </div>
     )
   }

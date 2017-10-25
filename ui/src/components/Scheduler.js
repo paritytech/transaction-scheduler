@@ -7,10 +7,29 @@ import moment from 'moment'
 import 'react-datepicker/dist/react-datepicker.css'
 import './Scheduler.css'
 
+const dateFormat = {
+  sameElse: 'llll'
+}
+
+export function Summary({ condition }) {
+    if ('block' in condition) {
+      const block = parseInt(condition.block.substr(2), 16)
+      return (
+        <span>at block #{ numeral(block).format() }</span>
+      )
+    }
+
+    if ('time' in condition) {
+      return (
+        <span>{ moment.unix(condition.time).calendar(null, dateFormat) }</span>
+      )
+    }
+}
+
 export default class Scheduler extends Component {
   static defaultProps = {
-    onNewConditions: () => {},
-    currentBlock: 0
+    onNewCondition: () => {},
+    currentBlock: 0,
   }
 
   state = {
@@ -31,7 +50,28 @@ export default class Scheduler extends Component {
   }
 
   componentDidMount () {
-    this.props.onNewConditions({ time: this.state.inputTime.unix() })
+    this.props.onNewCondition({ time: this.state.inputTime.unix() })
+  }
+
+  componentWillReceiveProps (newProps) {
+    const { condition } = newProps
+    if (this.props.condition === condition) {
+      return
+    }
+
+    if ('time' in condition) {
+      this.setState({
+        mode: 'time',
+        inputTime: moment.unix(condition.time)
+      })
+    }
+
+    if ('block' in condition) {
+      this.setState({
+        mode: 'block',
+        ...this.parseBlock(condition.block)
+      })
+    }
   }
 
   render () {
@@ -66,7 +106,7 @@ export default class Scheduler extends Component {
   handleInputTime = inputTime => {
     this.setState({ inputTime })
     if (this.isTimeValid()) {
-      this.props.onNewConditions({ time: inputTime.unix() })
+      this.props.onNewCondition({ time: inputTime.unix() })
     }
   }
 
@@ -74,7 +114,7 @@ export default class Scheduler extends Component {
     const { inputTime, startTime } = this.state
 
     return (
-      <Form>
+      <Form as='div'>
         <Form.Field>
           <DatePicker
             inline
@@ -99,25 +139,31 @@ export default class Scheduler extends Component {
     return null
   }
 
-  handleInputBlock = (ev) => {
+  parseBlock (inputBlock) {
     const minBlock = this.props.currentBlock
-    const inputBlock = ev.target.value
     const parsedBlock = inputBlock.startsWith('0x')
       ? parseInt(inputBlock.substr(2), 16)
       : numeral(inputBlock).value()
     const validBlock = parsedBlock > minBlock
 
-    this.setState({ inputBlock, validBlock, minBlock, parsedBlock })
+    return { inputBlock, validBlock, minBlock, parsedBlock }
+  }
 
-    if (validBlock) {
-      this.props.onNewConditions({ block: '0x' + parsedBlock.toString(16) })
+  handleInputBlock = (ev) => {
+    const state = this.parseBlock(ev.target.value)
+    this.setState(state)
+
+    if (state.validBlock) {
+      this.props.onNewCondition({
+        block: '0x' + state.parsedBlock.toString(16)
+      })
     }
   }
 
   renderBlockSelector () {
     const { inputBlock } = this.state
     return (
-      <Form>
+      <Form as='div'>
         <Form.Field>
           <input
             type='text'
@@ -160,7 +206,7 @@ export default class Scheduler extends Component {
 
     if (mode === 'time' && this.isTimeValid()) {
       return (
-        <p>Your transaction will be propagted to the network { inputTime.calendar() } ({ moment(inputTime).fromNow() })</p>
+        <p>Your transaction will be propagted to the network { inputTime.calendar(null, dateFormat) } ({ moment(inputTime).fromNow() })</p>
       )
     }
   }

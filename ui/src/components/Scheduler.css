@@ -21,11 +21,14 @@
   flex: 1
 }
 
+.ui.form .codearea textarea,
+.ui.form .codearea textarea:focus,
 .code {
   border: 1px solid #aaa;
   background: #efefef;
   color: #444;
   padding: 1rem;
+  width: 100%;
 }
 
 div.code {
