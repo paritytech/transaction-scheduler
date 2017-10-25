@@ -1,0 +1,18 @@
+extern crate parity_dapps_glue;
+
+use std::collections::HashMap;
+use parity_dapps_glue::File;
+
+#[derive(WebAppFiles)]
+#[webapp(path = "../ui/build")]
+pub struct Ui {
+	pub files: HashMap<&'static str, File>,
+}
+
+impl Default for Ui {
+	fn default() -> Ui {
+		Ui {
+			files: Self::files(),
+		}
+	}
+}

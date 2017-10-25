@@ -1,0 +1,15 @@
+[package]
+name = "txsched-ui"
+version = "0.1.0"
+authors = ["Tomasz Drwięga <tomusdrw@gmail.com>"]
+build = "build.rs"
+
+[features]
+default = ["with-syntex"]
+with-syntex = ["parity-dapps-glue/with-syntex"]
+
+[build-dependencies]
+parity-dapps-glue = "1.9"
+
+[dependencies]
+parity-dapps-glue = "1.9"
