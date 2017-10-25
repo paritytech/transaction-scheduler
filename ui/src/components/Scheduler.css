@@ -1,0 +1,35 @@
+.react-datepicker {
+  width: 100%;
+  display: flex;
+  border-radius: 0;
+  border: 0;
+  height: 205px;
+}
+.react-datepicker__time-list {
+  padding: 0 !important;
+}
+.react-datepicker__time-box {
+  width: 100% !important;
+}
+.react-datepicker__navigation--next--with-time:not(.react-datepicker__navigation--next--with-today-button) {
+  right: 90px;
+}
+.react-datepicker__month-container {
+  flex: 3
+}
+.react-datepicker__time-container {
+  flex: 1
+}
+
+.code {
+  border: 1px solid #aaa;
+  background: #efefef;
+  color: #444;
+  padding: 1rem;
+}
+
+div.code {
+  font-family: monospace;
+  line-height: 250%;
+  word-wrap: break-wrap;
+}

@@ -24,22 +24,17 @@ class App extends Component {
         <Container text style={{ marginTop: '2rem' }}>
           <Header as='h1'>Parity Transaction Scheduler</Header>
           <p>Parity Transaction Scheduler allows you to submit a pre-signed transaction to be released to the network (propagated to peers) at specific time or block.</p>
+          <ul>
+            <li><a href="https://txsched.parity.io">Foundation Scheduler</a></li>
+            <li><a href="https://kovan-txsched.parity.io">Kovan Scheduler</a></li>
+          </ul>
         </Container>
 
         { this.renderMenu() }
 
-        <div>
-          <a name="raw" />
-          { <SendRaw /> }
-        </div>
-        <div>
-          <a name="compose" />
-          { <Compose /> }
-        </div>
-        <div>
-          <a name="docs" />
-          { <Docs /> }
-        </div>
+        { <SendRaw /> }
+        { <Compose /> }
+        { <Docs /> }
       </div>
     )
   }
@@ -80,8 +75,8 @@ const styles = {
   menu: {
     border: 'none',
     boxShadow: 'none',
-    marginBottom: '1rem',
-    marginTop: '4rem',
+    marginBottom: '2rem',
+    marginTop: '2rem',
     transition: 'box-shadow 0.3s ease, padding 0.3s ease'
   },
   menuFixed: {
