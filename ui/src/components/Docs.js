@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { Container, Header, Grid } from 'semantic-ui-react'
+import { Container, Header, Grid, Divider } from 'semantic-ui-react'
 
 import Scheduler from './Scheduler'
 
@@ -25,7 +25,8 @@ export default class Docs extends Component {
       <Container text style={{ marginTop: '2rem' }}>
         <Header as='h1'><a name='docs'>RPC Documentation</a></Header>
         <p>Transaction Scheduler exposes a JSON-RPC methods allowing you to integrate your app with it.</p>
-        <Grid doubling columns={2} divided>
+        <Divider hidden />
+        <Grid doubling columns={2}>
           <Grid.Column>
             <Header as='h3'>RPC Request</Header>
             <pre className='code'>{ JSON.stringify(request, null, 2) }</pre>

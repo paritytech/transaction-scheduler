@@ -25,7 +25,7 @@
 .ui.form .codearea textarea:focus,
 .code {
   border: 1px solid #aaa;
-  background: #efefef;
+  background: #f9f9f9;
   color: #444;
   padding: 1rem;
   width: 100%;
@@ -34,5 +34,5 @@
 div.code {
   font-family: monospace;
   line-height: 250%;
-  word-wrap: break-wrap;
+  word-wrap: break-word;
 }

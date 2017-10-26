@@ -1,6 +1,6 @@
 import React, { Component } from 'react'
 import {
-  Container, Header, Visibility, Menu, Image
+  Container, Header, Visibility, Menu, Image, Divider
 } from 'semantic-ui-react'
 
 import Compose from './components/Compose'
@@ -39,16 +39,16 @@ class App extends Component {
 
         { this.renderMenu() }
 
+        { <Compose
+          onRlpChange={this.handleRlpChange}
+        /> }
         { <SendRaw
           condition={condition}
           onNewCondition={this.handleCondition}
           onRlpChange={this.handleRlpChange}
           rlp={rlp}
         /> }
-        { <Compose
-          condition={condition}
-          onNewCondition={this.handleCondition}
-        /> }
+        <Divider />
         { <Docs
           condition={condition}
           onNewCondition={this.handleCondition}
@@ -69,17 +69,15 @@ class App extends Component {
       >
         <Menu
           borderless
-          fixed={menuFixed && 'top'}
+          fixed={menuFixed ? 'top' : null}
           style={menuFixed ? styles.fixedMenu : styles.menu}
           >
           <Container text>
             <Menu.Item>
               <Image size='mini' src={logo} />
             </Menu.Item>
-            {menuFixed ? <Menu.Item header>Transaction Scheduler</Menu.Item> : null }
-            <Menu.Item as='a' href="#raw">Send RAW transaction</Menu.Item>
             <Menu.Item as='a' href="#compose">Create Transaction</Menu.Item>
-
+            <Menu.Item as='a' href="#raw">Schedule RAW transaction</Menu.Item>
             <Menu.Menu position='right'>
               <Menu.Item as='a' href="#docs">RPC Docs</Menu.Item>
             </Menu.Menu>
@@ -92,6 +90,7 @@ class App extends Component {
 
 const styles = {
   menu: {
+    background: 'none',
     border: 'none',
     boxShadow: 'none',
     marginBottom: '2rem',

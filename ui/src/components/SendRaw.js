@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { Container, Header, Form, Label, Grid, Button } from 'semantic-ui-react'
+import { Container, Header, Form, Label, Grid, Button, Divider } from 'semantic-ui-react'
 
 import Scheduler, { Summary } from './Scheduler'
 import Result from './Result'
@@ -16,6 +16,15 @@ export default class SendRaw extends Component {
     value: this.props.rlp,
     sending: false,
     sendResult: null
+  }
+
+  componentWillReceiveProps ({ rlp }) {
+    if (this.props.value !== rlp) {
+      this.setState({
+        value: rlp,
+        isValid: this.isValid(rlp)
+      })
+    }
   }
 
   handleScheduleTransaction = () => {
@@ -66,10 +75,13 @@ export default class SendRaw extends Component {
 
     return (
       <Container text style={{ marginTop: '2rem' }}>
-        <Header as='h1'><a name="raw">Send RAW Transaction</a></Header>
+        <Header as='h1'>
+          <Label circular color='orange' size='massive'>2</Label>
+          <a name="raw">Send RAW Transaction</a>
+        </Header>
         <p>If you already have a pre-signed raw transaction you can paste it here and schedule for execution.</p>
-
-        <Grid doubling columns={2} divided>
+        <Divider hidden />
+        <Grid doubling columns={2}>
           <Grid.Column>
             <Form
               loading={sending}
@@ -95,7 +107,6 @@ export default class SendRaw extends Component {
                 primary
                 disabled={!isValid}
                 type='submit'
-                style={{ margin: 'auto' }}
                 onClick={this.handleScheduleTransaction}
               >
                 Schedule Transaction<br />
@@ -107,6 +118,7 @@ export default class SendRaw extends Component {
             <Scheduler onNewCondition={ onNewCondition } condition={ condition }/>
           </Grid.Column>
         </Grid>
+        <Divider hidden />
       </Container>
     )
   }

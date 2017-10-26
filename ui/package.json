@@ -4,6 +4,7 @@
   "private": true,
   "proxy": "https://txsched-kovan.parity.io",
   "dependencies": {
+    "ethjs": "^0.2.8",
     "lodash": "^4.17.4",
     "moment": "^2.19.1",
     "numeral": "^2.0.6",
@@ -24,5 +25,8 @@
   },
   "devDependencies": {
     "standard": "^10.0.3"
+  },
+  "resolutions": {
+    "react-onclickoutside": "6.6.2"
   }
 }
