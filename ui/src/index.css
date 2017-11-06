@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css?family=Indie+Flower');
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f1e8 !important;
+}
+
+body,
+.ui.header,
+.ui.menu .item {
+  font-family: 'Indie Flower', cursive !important;
+}
+
+#root {
+  margin-bottom: 15rem;
+}
