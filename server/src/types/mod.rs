@@ -1,3 +1,4 @@
+use byteorder::{LittleEndian, ByteOrder};
 use ethcore::transaction::SignedTransaction;
 use rlp;
 
@@ -53,5 +54,40 @@ impl Transaction {
 
     pub fn rlp(&self) -> &[u8] {
         &self.rlp
+    }
+}
+
+pub struct TransactionId {
+    pub is_timestamp: bool,
+    pub num: u64,
+    pub hash: H256,
+}
+
+impl TransactionId {
+    const LEN: usize = 1 + 8 + 32;
+
+    pub fn from_bytes(bytes: Bytes) -> Option<Self> {
+        let bytes = bytes.into_vec();
+        if bytes.len() != Self::LEN {
+            return None;
+        }
+        let num = LittleEndian::read_u64(&bytes[1..]);
+        let hash = bytes[9..].into();
+    
+        Some(TransactionId {
+            is_timestamp: bytes[0] > 0,
+            num,
+            hash,
+        })
+    }
+
+    pub fn to_bytes(&self) -> Bytes {
+        let mut bytes = Vec::with_capacity(Self::LEN);
+        bytes.resize(Self::LEN, 0);
+        bytes[0] = self.is_timestamp as u8;
+        LittleEndian::write_u64(&mut bytes[1..], self.num);
+        bytes[9..].copy_from_slice(&*self.hash);
+
+        bytes.into()
     }
 }

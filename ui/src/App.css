@@ -1,0 +1,15 @@
+.ui.header a[name] {
+  color: inherit;
+  font-weight: 600;
+  line-height: 4rem;
+}
+.ui.header div + a[name] {
+  margin-left: 1rem;
+}
+
+.ui.menu.item {
+  font-weight: 400;
+}
+.ui.message code {
+  word-wrap: break-word;
+}
