@@ -30,6 +30,8 @@ extern crate web3;
 
 #[cfg(test)]
 extern crate tempdir;
+#[cfg(test)]
+extern crate env_logger;
 
 pub mod blockchain;
 pub mod database;
