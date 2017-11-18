@@ -2389,7 +2389,7 @@ dependencies = [
 [[package]]
 name = "txsched-ui"
 version = "0.1.0"
-source = "git+https://github.com/paritytech/transaction-scheduler.git?branch=precompiled#af74c6109361c504711583bff39402775a2f1689"
+source = "git+https://github.com/paritytech/transaction-scheduler.git?branch=precompiled#f511dffba048942f80140e7a347ebf0f2b4adf6e"
 dependencies = [
  "parity-dapps-glue 1.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
