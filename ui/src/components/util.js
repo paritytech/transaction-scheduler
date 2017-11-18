@@ -1,6 +1,6 @@
 import Eth from 'ethjs'
 
-export function toChecksumAddress(address) {
+export function toChecksumAddress (address) {
   address = address.replace('0x', '').toLowerCase()
   const addressHash = Eth.keccak256(address)
 

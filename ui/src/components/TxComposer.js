@@ -440,7 +440,7 @@ function TxComposerCurl({ json }) {
       <Header as='h3'>Send CURL Request</Header>
       <p>If you don't have web3-enabled browser you can send this RPC request to your node.</p>
       <div className='code'>
-        $ curl localhost:8545 -X POST -HContent-Type:application/json --data '{ JSON.stringify(request) }'
+        $ curl localhost:8545 -X POST -H "Content-Type:application/json" --data '{ JSON.stringify(request) }'
       </div>
     </div>
   )

@@ -38,6 +38,10 @@ export default class Scheduler extends Component {
     parseBlock: 0,
     minBlock: this.props.currentBlock,
 
+    fineTune: false,
+    tempTime: moment().add(3, 'hours').unix(),
+    tempTimeError: false,
+
     startTime: moment(),
     inputTime: moment().add(3, 'hours')
   }
@@ -45,12 +49,20 @@ export default class Scheduler extends Component {
   setModeTime = () => this.setState({ mode: 'time'})
   setModeBlock = () => this.setState({ mode: 'block' })
 
-  isTimeValid () {
-    return this.state.inputTime > moment()
+  isTimeValid (inputTime = this.state.inputTime) {
+    return inputTime > moment()
   }
 
   componentDidMount () {
     this.props.onNewCondition({ time: this.state.inputTime.unix() })
+  }
+
+  inputTime (momentTime) {
+    return {
+      inputTime: momentTime,
+      tempTime: momentTime.unix(),
+      tempTimeError: false
+    }
   }
 
   componentWillReceiveProps (newProps) {
@@ -62,7 +74,7 @@ export default class Scheduler extends Component {
     if ('time' in condition) {
       this.setState({
         mode: 'time',
-        inputTime: moment.unix(condition.time)
+        ...this.inputTime(moment.unix(condition.time))
       })
     }
 
@@ -104,14 +116,35 @@ export default class Scheduler extends Component {
   }
 
   handleInputTime = inputTime => {
-    this.setState({ inputTime })
-    if (this.isTimeValid()) {
+    this.setState(this.inputTime(inputTime))
+    if (this.isTimeValid(inputTime)) {
       this.props.onNewCondition({ time: inputTime.unix() })
     }
   }
 
+  secondsToMoment = seconds => moment(parseInt(seconds, 10) * 1000)
+
+  handleInputRawTime = () => {
+    const { tempTime } = this.state
+    this.handleInputTime(this.secondsToMoment(tempTime))
+  }
+
+  handleInputRawTimeTemp = ev => {
+    const { value } = ev.target
+    const v = this.secondsToMoment(value)
+    this.setState({
+      tempTime: value,
+      tempTimeError: !this.isTimeValid(v)
+    })
+  }
+
+  handleFineTune = () => {
+    this.setState({ fineTune: !this.state.fineTune })
+  }
+
   renderTimeSelector () {
-    const { inputTime, startTime } = this.state
+    const { inputTime, startTime, fineTune, tempTime, tempTimeError } = this.state
+    const tempMoment = this.secondsToMoment(tempTime)
 
     return (
       <Form as='div'>
@@ -124,7 +157,31 @@ export default class Scheduler extends Component {
             minDate={ startTime }
           />
           { this.renderTimeHelp() }
+          <a
+            className='finetune'
+            onClick={this.handleFineTune}
+          >fine-tune</a>
         </Form.Field>
+        { fineTune && (
+          <Form.Group inline widths='two'>
+            <Form.Input
+              error={ tempTimeError }
+              fluid
+              onChange={ this.handleInputRawTimeTemp }
+              size='mini'
+              type='number'
+              value={ tempTime }
+            />
+            <Form.Button
+              disabled={ tempTimeError || tempMoment === inputTime }
+              fluid
+              onClick={ this.handleInputRawTime }
+              primary
+              size='mini'
+              content='Update Time'
+            />
+          </Form.Group>
+        )}
       </Form>
     )
   }
