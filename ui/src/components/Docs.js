@@ -19,7 +19,7 @@ export default class Docs extends Component {
   render () {
     const { condition, onNewCondition } = this.props
     const request = this.request()
-    const domain = `${window.location.protocol}://${window.location.host}`
+    const domain = `${window.location.protocol}//${window.location.host}`
 
     return (
       <Container text style={{ marginTop: '2rem' }}>
@@ -37,7 +37,7 @@ export default class Docs extends Component {
         </Grid>
 
         <Header as='h3'>CURL example</Header>
-        <div className='code'>$ curl {domain} -X POST -HContent-Type:application/json --data '{ JSON.stringify(request) }'</div>
+        <div className='code'>$ curl {domain} -X POST -H "Content-Type:application/json" --data '{ JSON.stringify(request) }'</div>
       </Container>
     )
   }

@@ -35,6 +35,7 @@ class App extends Component {
             <li><a href="https://txsched.parity.io">Foundation Scheduler</a></li>
             <li><a href="https://txsched-kovan.parity.io">Kovan Scheduler</a></li>
           </ul>
+          <p>The transaction need to be sent from PICOPS-verified account. Verify your account at <a href="https://picops.parity.io">picops.parity.io</a></p>
         </Container>
 
         { this.renderMenu() }

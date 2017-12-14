@@ -36,3 +36,7 @@ div.code {
   line-height: 250%;
   word-wrap: break-word;
 }
+.finetune {
+  cursor: pointer;
+  font-size: 0.8rem;
+}
